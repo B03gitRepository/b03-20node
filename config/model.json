@@ -1,0 +1,45 @@
+{
+  "format": "hf-safetensors",
+  "architecture": {
+    "model_type": "qwen2",
+    "vocab_size": 151936,
+    "hidden_size": 1536,
+    "num_hidden_layers": 28,
+    "num_attention_heads": 12,
+    "num_key_value_heads": 2
+  },
+  "tokenizerSha256": {
+    "merges.txt": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+    "tokenizer_config.json": "5b5d4f65d0acd3b2d56a35b56d374a36cbc1c8fa5cf3b3febbbfabf22f359583",
+    "tokenizer.json": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+    "vocab.json": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+    "config.json": "f77f3ee539bd9831ec718ee5b68655c08f3a9436a831e7a1fdec06cf5286814e"
+  },
+  "tokenLimit": 8192,
+  "symbols": [
+    "A",
+    "B",
+    "C"
+  ],
+  "version": 18,
+  "weightFilesSha256": {
+    "config.json": "f77f3ee539bd9831ec718ee5b68655c08f3a9436a831e7a1fdec06cf5286814e",
+    "model-00001-of-00015.safetensors": "ff7f1856f8def8d9341353925ef319b35969f425555165781e9d692b6562f6b6",
+    "model-00002-of-00015.safetensors": "3adf7d35047f7b6269c6fcd24440a9012f4b75e20cf3e4e66ded31e53298dbbd",
+    "model-00003-of-00015.safetensors": "e598af2b181a9cdd540834ebcad6b4440dda5b85c1f0fc979e8e7f2ba9a87637",
+    "model-00004-of-00015.safetensors": "7bd773b13aa684d9d95497ee7c8d843a1bfd8b296497a7badf7fe7bd4880fdb4",
+    "model-00005-of-00015.safetensors": "955d589d219e83a80fd7787036c5eefdfd52b0a85a20f315a2965be71d41b2ff",
+    "model-00006-of-00015.safetensors": "a4d30165ff5ec262971b39b60fbe9b2cecfa7816f637b1cfb25af3dfdce53bb0",
+    "model-00007-of-00015.safetensors": "181427950f9941f4811f64fa0c7194320e856857d7db2657c79861db3c71aece",
+    "model-00008-of-00015.safetensors": "88255bab59aa4123cd9b325eb7584bcada601d6c48e92c76c53d3323500a44aa",
+    "model-00009-of-00015.safetensors": "fcb05dc257026ad2b0396af98e31686aa94ce34cb2953da7d1473bf32c542d7c",
+    "model-00010-of-00015.safetensors": "b63182c212a1abd5c35833f6845b8f08846746169afbca37a800a08219d5eedf",
+    "model-00011-of-00015.safetensors": "1a8ffa26240e08c3a733e51ae5c0a92e2dc031316bb41f793c6354ef7fc80c37",
+    "model-00012-of-00015.safetensors": "56d1b25a88844e6618f5ee43a49a88baa90b065fbb9995f1f5d613f73d24b937",
+    "model-00013-of-00015.safetensors": "2acac15b40aee29947a040fe48f15755f8bbccae7243686760b1ed79b54a87fe",
+    "model-00014-of-00015.safetensors": "d799a1790bf61bd01073d08457c0b3e55769c73fc0d3da657aa1d80cef17e56e",
+    "model-00015-of-00015.safetensors": "7e900b5560d1d96f41ebdebb66ebb6542e22f6098a963e01d0124965f835f3f6",
+    "model.safetensors.index.json": "f668f67ab95ae9d7a3d10aa48a6e3c6768170b16049999bb827a5d92a2cdcfc9"
+  },
+  "actionDescriptions": "A hold current, B priority greedy, C bounded search."
+}
