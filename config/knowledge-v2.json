@@ -1,0 +1,7 @@
+{
+  "extends": "components.json",
+  "knowledge": {
+    "version": "1.1.0",
+    "source": "../knowledge/technical-v2.json"
+  }
+}

@@ -5,7 +5,7 @@ from scene import DEPENDENCY, PROFILE, ROOT, sha256, write_json
 
 
 def source_identity():
-    paths = [ROOT/"run.py", *(ROOT/"config").glob("*.json"), *(ROOT/"src").rglob("*.py")]
+    paths = [ROOT/"run.py", *(ROOT/"config").glob("*.json"), *(ROOT/"knowledge").glob("*.json"), *(ROOT/"src").rglob("*.py")]
     return {p.relative_to(ROOT).as_posix(): sha256(p) for p in sorted(paths)}
 
 
@@ -38,6 +38,16 @@ def check_archive(run, conditions):
     for n in ("net-topo.json","bg-service.json",f"scripts/script-{script}.json"):
         if n not in PROFILE["pins"] or conditions["sourceHashes"].get(n)!=PROFILE["pins"][n] or files["input/"+n]["sha256"]!=PROFILE["pins"][n]:
             raise ValueError("Original official input identity mismatch: "+n)
+    components = conditions["components"]
+    from component_config import digest
+    if components["manifestSha256"] != digest({k: v for k, v in components.items() if k != "manifestSha256"}):
+        raise ValueError("Component identity or configuration fingerprint differs")
+    from importlib.util import find_spec
+    for kind, pin in components["providerModuleSha256"].items():
+        module = components[kind]["entrypoint"].split(":")[0]
+        spec = find_spec(module)
+        if spec is None or not spec.origin or sha256(Path(spec.origin)) != pin:
+            raise ValueError("Installed provider differs from recorded source: " + kind)
     expected=source_identity()
     policy=conditions.get("rcPolicy") or {}
     if policy.get("kind")=="frozen-model":
