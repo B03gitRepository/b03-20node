@@ -138,13 +138,17 @@ def objective(requests, target, current):
     return tuple(sum(target.get(sid) is not None for sid,r in requests.items() if r['priority']==p) for p in levels) + (-sum(current.get(sid)!=target.get(sid) for sid in set(current)|set(target)),)
 
 
-def solve(nodes, links, requests, current, now, config, method='priority_greedy', initialize=False):
+def solve(nodes, links, requests, current, now, config, method='priority_greedy', initialize=False, *, writable_service_ids=None):
     active=active_requests(requests,now)
     current_eval=assess(nodes,links,requests,current,now)
     target={sid:None for sid in requests}
     healthy={sid for sid,d in current_eval['services'].items() if d['satisfied']}
     protected=set(config['protected_service_ids'])
     frozen=set() if initialize else healthy | (protected & set(active))
+    if writable_service_ids is not None:
+        # OM can see requests whose device configuration is awaiting a fresh readback.
+        # Their wire reservations already count in the ledger; only this work order's IDs may change.
+        frozen.update(set(requests) - set(writable_service_ids))
     for sid in frozen: target[sid]=copy.deepcopy(current.get(sid))
     work=sorted((sid for sid in active if sid not in frozen),key=lambda sid:(-active[sid]['priority'],sid))
     pool={}; path_audit={}
@@ -192,4 +196,8 @@ def solve(nodes, links, requests, current, now, config, method='priority_greedy'
            'scope':'failed_and_unadmitted_active_requests; healthy assignments frozen',
            'globallyOptimal':False, 'physicalInfeasibilityProven':False,
            'unadmittedReasons':{sid:'NO_FEASIBLE_ALLOCATION_IN_SEARCHED_SCOPE' for sid in active if target.get(sid) is None}}
+    if writable_service_ids is not None:
+        for sid in active.keys() - set(writable_service_ids):
+            if sid in audit['unadmittedReasons']:
+                audit['unadmittedReasons'][sid] = 'OUTSIDE_WORK_ORDER_WRITE_SCOPE'
     return target,audit
