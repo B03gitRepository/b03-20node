@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="B03 通信网络资源管控系统：交互式架构全景与单工单闭环演示（脱敏示意版）。">
+<title>B03 · 系统架构与单工单流程演示</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#07111e;--panel:#101e30;--line:#2a3c53;--muted:#9bafc7;--white:#ecf5ff;
+  --cyan:#5ce0d4;--blue:#7eb3ff;--purple:#b5a1ff;--amber:#f5bd70;--green:#6de0b5;
+}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at 50% 0,#142b45 0,transparent 65%),var(--bg);color:var(--white);font:15px/1.55 "Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif}
+button,select{font:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:#15253a;color:var(--white);border-radius:8px;padding:8px 14px;transition:background .16s,border-color .16s,transform .12s}
+button:hover{background:#223a55;border-color:#5d83a3}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.38;cursor:not-allowed}
+button:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+[hidden]{display:none!important}
+
+.topbar{max-width:1680px;margin:auto;padding:12px 24px;display:flex;align-items:center;gap:18px;border-bottom:1px solid #21354a}
+.brand{display:flex;gap:12px;align-items:center;font-weight:700;letter-spacing:.03em;white-space:nowrap}
+.brandmark{font-size:15px;border:1px solid #4c7fa1;border-radius:9px;padding:7px 10px;color:var(--cyan);background:linear-gradient(135deg,#1b4961,#132439)}
+.brand small{display:block;font-size:11px;font-weight:400;color:var(--muted)}
+.top-nav{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+.top-nav button{background:transparent;border-color:transparent;font-size:13px;padding:7px 12px}
+.top-nav button.current{border-color:var(--cyan);background:#153649;color:#d0f8ff}
+
+main{max-width:1680px;margin:auto;padding:14px 24px 18px}
+.intro{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:14px;flex-wrap:wrap}
+.intro h1{font-size:clamp(22px,2.2vw,30px);margin:0 0 4px;font-weight:650}
+.intro p{margin:0;color:var(--muted);font-size:13.5px}
+.pill-note{font-size:12px;color:#b8e7f4;background:#10293d;border:1px solid #325975;padding:6px 12px;border-radius:20px;white-space:nowrap}
+
+.product{display:grid;grid-template-columns:minmax(0,1fr) 365px;border:1px solid #314d67;border-radius:16px;overflow:hidden;background:radial-gradient(ellipse at center,#17304740,transparent 75%),#0a1523;box-shadow:0 16px 54px #0004}
+.stage-head{grid-column:1/-1;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #20354a;background:#0e1e30cc}
+.viewlabel{display:flex;align-items:center;gap:8px;font-size:13px}
+.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 12px #5ce0d4aa}
+.viewlabel span:last-child{color:var(--muted);font-size:12px;margin-left:6px}
+.stage-tools{display:flex;gap:8px}
+.stage-tools button{font-size:12px;padding:5px 10px}
+
+.panorama-main{min-width:0;display:flex;flex-direction:column}
+#graph-wrap{padding:6px 8px 0;overflow:auto;flex:1;scrollbar-width:thin;scrollbar-color:#3a6076 transparent}
+#system-graph{display:block;width:100%;height:clamp(400px,calc(100dvh - 260px),690px);overflow:visible;font-family:"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif}
+#graph-wrap.zoomed{max-height:calc(100dvh - 225px)}
+#graph-wrap.zoomed #system-graph{width:1580px;height:1100px;max-width:none}
+.legend{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;font-size:11px;color:var(--muted);padding:8px 12px 12px}
+.legend i{display:inline-block;width:16px;height:3px;vertical-align:middle;margin-right:6px;border-radius:2px}
+
+.panorama-side{border-left:1px solid #284258;background:linear-gradient(155deg,#11273b,#0c1c2c);padding:20px;display:flex;flex-direction:column;min-width:0}
+.kicker{display:inline-block;font-size:11px;letter-spacing:.06em;color:#8ad9e3;margin-bottom:8px}
+.overview-card h2{font-size:22px;line-height:1.45;margin:4px 0 14px;font-weight:600}
+.overview-impact{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;padding:14px 12px;border-top:1px solid #2d4c63;border-bottom:1px solid #2d4c63;margin:0 0 14px;background:#0b1a2966;border-radius:8px}
+.overview-impact div{text-align:center}
+.overview-impact span{display:block;font-size:11px;color:var(--muted)}
+.overview-impact b{font-size:24px;font-weight:600;color:var(--amber)}
+.overview-impact small{font-size:11px;color:#b8cfe0}
+.overview-impact .arrow-down{font-size:22px;color:var(--cyan)}
+.overview-card p{font-size:13px;line-height:1.75;color:#b7cde0;margin:0 0 14px}
+.launch-btn{width:100%;padding:12px 14px;background:var(--cyan);color:#082633;border-color:var(--cyan);font-size:14.5px;font-weight:700;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
+.launch-btn:hover{background:#8ef0e7;border-color:#8ef0e7;color:#06202b}
+.sub-btn{width:100%;padding:10px 14px;background:#132e44;border-color:#3a6481;color:#d6f1ff;font-size:13px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.team-mini{border-top:1px solid #264156;padding-top:12px;margin-top:auto}
+.team-mini h3{font-size:12px;color:#93bfd6;margin:0 0 8px;font-weight:600}
+.team-chips{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.team-chips button{font-size:11.5px;padding:7px 8px;text-align:left;background:#0e2336;border-color:#2c4a62;color:#cfe7f7}
+.team-chips button small{display:block;font-size:10px;color:#87a9c2;margin-top:2px}
+
+/* Run Console */
+.console{display:flex;flex-direction:column;height:100%;min-height:0}
+.mode-row{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.mode-row label{font-size:12px;color:#94b7ce;white-space:nowrap}
+.mode-row select{flex:1;min-width:0;color:#e4f7ff;background:#0e2538;border:1px solid #3c6580;border-radius:8px;padding:8px 10px;font-size:12.5px}
+.progress-meta{display:flex;justify-content:space-between;font-size:12px;color:#8bbcd2}
+.progress-bar{height:4px;background:#173649;border-radius:3px;margin:7px 0 14px;overflow:hidden}
+.progress-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--blue));transition:width .24s ease}
+.step-card{flex:1;min-height:190px;display:flex;flex-direction:column}
+.participants{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#8fd4e4;flex-wrap:wrap;margin-bottom:8px}
+.participants span{background:#122e42;border:1px solid #315a73;padding:3px 8px;border-radius:12px}
+.participants i{font-style:normal;color:var(--amber);font-weight:700}
+.step-card h2{font-size:19.5px;line-height:1.4;margin:2px 0 10px;font-weight:650}
+.step-card p{font-size:13.5px;line-height:1.8;color:#c3d9e8;margin:0}
+.proof-box{margin-top:12px;padding:9px 11px;border-left:3px solid var(--green);background:#10322c;color:#c0f2dd;font-size:12px;line-height:1.65;border-radius:0 6px 6px 0}
+.code-hint{margin-top:10px;padding:8px 10px;border:1px solid #2b4a62;background:#0b1a29;border-radius:7px;font-size:11.5px;color:#9ed7ea;font-family:ui-monospace,Consolas,monospace;word-break:break-all}
+.terminal-badge{margin-top:12px;padding:10px 12px;border-left:3px solid var(--green);background:#103b32;color:#b8ffe4;font-size:13.5px;font-weight:650;border-radius:0 6px 6px 0}
+.terminal-badge[data-tone="warn"]{border-color:var(--amber);background:#3d2f18;color:#ffe2a8}
+
+.ledger{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:14px 0 12px;padding-top:12px;border-top:1px solid #27445a}
+.ledger>div{border-left:2px solid #39758b;padding-left:7px;min-width:0}
+.ledger small{display:block;font-size:10px;color:#8aaab9}
+.ledger b{display:block;font-size:11.5px;font-weight:600;color:#ccf1ea;margin-top:3px;line-height:1.35}
+.controls{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;padding-top:10px;border-top:1px solid #27445a}
+.controls button{padding:9px 6px;font-size:12px}
+.controls .play-btn{border-color:#5ebbd0;background:#16465a;color:#e6fdff;font-weight:600}
+.back-overview{margin-top:8px;background:transparent;border-color:transparent;color:#8db4cb;font-size:12px;padding:5px;text-align:left}
+
+/* SVG styles */
+#system-graph text{user-select:none}
+#system-graph .sg-node{cursor:pointer;transition:opacity .18s}
+#system-graph .sg-node:hover .sg-focus{stroke-opacity:.85}
+#system-graph .sg-node.sg-dim{opacity:.28}
+#system-graph .sg-node.sg-active .sg-focus{stroke-opacity:.95;stroke-width:2.4}
+#system-graph .sg-edge{transition:opacity .18s}
+#system-graph .sg-edge.sg-dim{opacity:.14}
+#system-graph .sg-flow-path{fill:none;stroke-width:4.4;stroke-dasharray:9 10;stroke-linecap:round;animation:sg-flow 1.05s linear infinite;pointer-events:none}
+@keyframes sg-flow{to{stroke-dashoffset:-38}}
+body.reduced #system-graph .sg-flow-path{animation:none;stroke-dasharray:none}
+
+/* Modal */
+dialog{padding:0;color:var(--white);width:min(680px,93vw);border:1px solid #4f7290;border-radius:15px;background:linear-gradient(160deg,#12263d,#0a1726);box-shadow:0 30px 90px #000b}
+dialog::backdrop{background:#030a13cc;backdrop-filter:blur(4px)}
+.dlg-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #2a445d;background:#102237}
+.dlg-head strong{font-size:16px}
+.dlg-body{padding:20px 22px 22px}
+.dlg-badge{display:inline-block;font-size:11px;padding:3px 10px;border-radius:14px;border:1px solid #487b94;background:#123347;color:#9ef2ff;margin-bottom:10px}
+.dlg-body h3{margin:0 0 8px;font-size:21px}
+.dlg-body p{margin:0 0 14px;font-size:14px;line-height:1.75;color:#bfd5e6}
+.dlg-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.dlg-box{padding:12px 14px;border:1px solid #2a465e;border-radius:10px;background:#0e1f33}
+.dlg-box b{display:block;font-size:11.5px;color:#82cde2;margin-bottom:6px}
+.dlg-box ul{margin:0;padding-left:17px;font-size:12.5px;line-height:1.7;color:#c2d7e8}
+.dlg-files{padding:11px 14px;border:1px solid #355873;border-radius:10px;background:#0a1827;font-size:12.5px;color:#a8e5f5;font-family:ui-monospace,Consolas,monospace}
+
+footer{max-width:1680px;margin:0 auto;padding:10px 24px 16px;display:flex;align-items:center;gap:16px;font-size:11.5px;color:#7e98b0;flex-wrap:wrap}
+footer .right-ctl{margin-left:auto;font-size:11.5px;padding:4px 10px;background:transparent;border-color:#2a4056;color:#9ab4ca}
+
+@media(max-width:1040px){
+  .product{grid-template-columns:1fr}
+  .panorama-side{border-left:0;border-top:1px solid #284258}
+  #system-graph{height:auto;aspect-ratio:1625/1160}
+  .dlg-grid{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){#system-graph .sg-flow-path{animation:none;stroke-dasharray:none}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brandmark">B03</span>
+    <span>通信网络资源管控系统<small>双智能体协同 · 四组可插拔架构</small></span>
+  </div>
+  <nav class="top-nav" aria-label="视图切换">
+    <button id="nav-overview" class="current">系统全景</button>
+    <button id="nav-flow">单工单流程演示</button>
+    <button id="nav-teams">四组改哪里</button>
+  </nav>
+</header>
+
+<main>
+  <section class="intro">
+    <div>
+      <h1>从网络事件触发，到逐跳读回签收。</h1>
+      <p>一张图看清系统运行逻辑、双角色分工（OM / RC），以及模型、规则、知识库、仿真四个可替换槽位。</p>
+    </div>
+    <span class="pill-note">脱敏示意算例 · 离线单文件 · 点击任意组件看仓库入口</span>
+  </section>
+
+  <section class="product" aria-label="系统全景与流程演示">
+    <div class="stage-head">
+      <div class="viewlabel">
+        <span class="live-dot"></span>
+        <b id="stage-title">系统全景</b>
+        <span id="stage-hint">点击任意组件查看职责与代码入口；右侧可单步播放工单闭环</span>
+      </div>
+      <div class="stage-tools">
+        <button id="btn-fit">适应窗口</button>
+        <button id="btn-zoom">放大查看 ＋</button>
+      </div>
+    </div>
+
+    <div class="panorama-main">
+      <div id="graph-wrap">
+        <svg id="system-graph" viewBox="0 -25 1625 1105" role="group" aria-label="B03 通信网络资源管控系统架构图"></svg>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--blue)"></i>观测上报 / 编排</span>
+        <span><i style="background:var(--cyan)"></i>双角色 A2A / 求解调用</span>
+        <span><i style="background:var(--purple)"></i>模型推理 / 知识与规则</span>
+        <span><i style="background:var(--amber)"></i>校验放行 / 唯一执行读回</span>
+        <span><i style="background:var(--green)"></i>运维复核签收</span>
+      </div>
+    </div>
+
+    <aside class="panorama-side">
+      <div id="overview-panel" class="overview-card">
+        <span class="kicker">脱敏示意算例 · 单工单闭环</span>
+        <h2>一次链路带宽骤降，<br>系统怎么完成处置？</h2>
+        <div class="overview-impact">
+          <div><span>示例初始带宽</span><b>20 <small>Mbps</small></b></div>
+          <span class="arrow-down">→</span>
+          <div><span>故障后带宽</span><b>2.0 <small>Mbps</small></b></div>
+        </div>
+        <p>在分组仿真里，<strong>所有策略（固定规则或模型）走完全同一套闭环</strong>：OM 读观测鉴权开单 → A2A 交接 RC → 查知识/模型/规则生成方案 → 关口校验 → 唯一执行器下发与逐跳读回 → OM 复核签收。</p>
+        <button id="btn-start-flow" class="launch-btn"><span>开始流程演示（12 步）</span><span>→</span></button>
+        <button id="btn-start-teams" class="sub-btn"><span>先看四组分别改哪里</span><span>→</span></button>
+        <div class="team-mini">
+          <h3>点击直达四个可替换组件</h3>
+          <div class="team-chips">
+            <button data-open="model">模型组<small>docs/MODEL.md</small></button>
+            <button data-open="solver">规则组<small>docs/RULES.md</small></button>
+            <button data-open="knowledge">知识库组<small>docs/KNOWLEDGE.md</small></button>
+            <button data-open="environment">仿真组<small>docs/SIMULATOR.md</small></button>
+          </div>
+        </div>
+      </div>
+
+      <div id="run-panel" class="console" hidden>
+        <div class="mode-row">
+          <label for="mode-select">演示场景</label>
+          <select id="mode-select">
+            <option value="normal">1. 正常闭环（从事件到签收）</option>
+            <option value="teams">2. 四组热替换视角（各组改哪里）</option>
+            <option value="stale">3. 校验退回后重算（状态过期）</option>
+            <option value="readback">4. 读回未确认（幂等保护）</option>
+          </select>
+        </div>
+
+        <div class="progress-meta">
+          <span id="step-phase">阶段</span>
+          <span id="step-count">1 / 12</span>
+        </div>
+        <div class="progress-bar"><i id="step-fill" style="width:8%"></i></div>
+
+        <div class="step-card">
+          <div class="participants" id="step-participants"></div>
+          <h2 id="step-title"></h2>
+          <p id="step-desc"></p>
+          <div class="proof-box" id="step-proof" hidden></div>
+          <div class="code-hint" id="step-code" hidden></div>
+          <div class="terminal-badge" id="step-terminal" hidden></div>
+        </div>
+
+        <div class="ledger">
+          <div><small>工单授权</small><b id="led-auth">未开单</b></div>
+          <div><small>配置读回</small><b id="led-cfg">未下发</b></div>
+          <div><small>业务核验</small><b id="led-qos">待复核</b></div>
+        </div>
+
+        <div class="controls">
+          <button id="btn-prev">← 上一步</button>
+          <button id="btn-play" class="play-btn">播放 ▶</button>
+          <button id="btn-next">下一步 →</button>
+        </div>
+        <button id="btn-back" class="back-overview">↙ 返回全景简介（快捷键：← / → / 空格）</button>
+      </div>
+    </aside>
+  </section>
+</main>
+
+<footer>
+  <span>B03 通信网络资源管控 · 脱敏流程演示页（不含赛事原始拓扑坐标与事件脚本）</span>
+  <button id="btn-motion" class="right-ctl">减少动效</button>
+</footer>
+
+<dialog id="node-dialog" aria-labelledby="dlg-title">
+  <div class="dlg-head">
+    <strong id="dlg-head-title">组件详情</strong>
+    <button id="dlg-close">关闭 ✕</button>
+  </div>
+  <div class="dlg-body" id="dlg-body"></div>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+  const NS = 'http://www.w3.org/2000/svg';
+  const COLORS = { cyan:'#5ce0d4', blue:'#7eb3ff', purple:'#b5a1ff', amber:'#f5bd70', green:'#6de0b5', muted:'#8babc4', record:'#9ba6c7' };
+
+  const NODES = {
+    orchestrator: {
+      name:'运行编排与冲突仲裁', sub:'工单派发 · A2A 1.0 · 冲突仲裁', detail:'', color:'blue', pos:[810,96,420],
+      owner:'系统集成组', replaceable:false,
+      summary:'推动工单从事件触发到结案归档，负责 OM/RC 之间的 A2A 1.0 通信、超时重试（默认 300s）以及同对象冲突锁定。',
+      inputs:['仿真事件触发与最新网络快照','执行器状态与未确认占用标记'],
+      outputs:['向 OM 派发诊断/复核任务，向 RC 派发资源处置任务','向评价模块归档完整工单终态'],
+      files:'src/packet/packet_a2a.py · src/packet/packet_roles.py'
+    },
+    model: {
+      name:'轻量化模型引擎', sub:'冻结模型 / CPU INT8 / 在线 PPO', detail:'在合法目录内选工具 · 独立上下文', color:'purple', pos:[235,342,260],
+      owner:'模型组（可热替换）', replaceable:true, badge:'可替换 · 模型组',
+      summary:'接收 RC 送达的结构化观测，在当前工单授权的合法工具目录（如 A–C 或 A–L）中选择动作，返回 tool_id 与 policyVersion。',
+      inputs:['b03.packet.rc-choice.v1 结构化观测','当前工单授权的 legalActions 目录'],
+      outputs:['合法工具编号 tool_id 与 policyVersion','在线训练时额外返回真实行为概率与可恢复 checkpoint'],
+      files:'docs/MODEL.md · config/example-model.json · config/int8-model.json · config/packet-ppo.json'
+    },
+    knowledge: {
+      name:'通信知识与规则库', sub:'版本化技术知识 · K044 准入查询', detail:'只读检索 · 带来源与适用条件', color:'purple', pos:[235,582,260],
+      owner:'知识库组（可热替换）', replaceable:true, badge:'可替换 · 知识库组',
+      summary:'提供只读、带版本的技术知识条目（如 K044 准入检查、K045 时钟口径）。不改写原始 QoS 或写权限，所有查询结果随工单留痕。',
+      inputs:['按条目 ID（如 K044）或主题（topic）发起的只读查询','带版本的 b03.knowledge.v1 JSON 知识库'],
+      outputs:['匹配条目列表、来源文件与适用条件','供 RC 准入复核与校验器引用的结构化依据'],
+      files:'docs/KNOWLEDGE.md · config/example-knowledge.json · knowledge/technical-v1.json'
+    },
+    om: {
+      name:'运维智能体 (OM)', sub:'感知观测 · 鉴权开单 · 读回签收', detail:'只读诊断 · 发放写权限', color:'blue', pos:[720,342,260],
+      owner:'系统集成组', replaceable:false,
+      summary:'只读感知角色。读取到达控制面的网络与业务上报，签发带可写范围与保护名单的工单授权，并在设备逐跳读回后完成签收。',
+      inputs:['分组仿真器送达的网络观测与业务上报','唯一执行器返回的逐跳读回配置证据'],
+      outputs:['带写权限范围与保护名单的工单（经 A2A 交 RC）','业务复核结果与签收结案证据'],
+      files:'src/packet/packet_roles.py · docs/JOINT_OPTIMIZATION.md'
+    },
+    rc: {
+      name:'资源控制智能体 (RC)', sub:'选工具 · 调求解 · 提交执行申请', detail:'受工单权限与预算约束', color:'cyan', pos:[720,588,290],
+      owner:'系统集成组', replaceable:false,
+      summary:'资源决策角色。按 OM 授权组织决策：用固定规则或模型选出合法工具，查询知识库，调用规则求解器算出具体配置并提交校验。',
+      inputs:['OM 经 A2A 交接的工单诊断、权限与快照','模型选出的合法工具 / 知识库条目 / 规则候选方案'],
+      outputs:['向规则求解器发起受限求解任务','向方案校验关口提交带授权与版本号的执行申请'],
+      files:'src/packet/packet_roles.py · config/components.json'
+    },
+    solver: {
+      name:'调度规则与求解器', sub:'A–L / 自定义 M 联合路由求解', detail:'纯数值计算 · 无设备写权限', color:'purple', pos:[1165,340,260],
+      owner:'规则组（可热替换）', replaceable:true, badge:'可替换 · 规则组',
+      summary:'确定性数值求解组件。实现 enumerate_actions 和 solve_action，在授权可写范围内计算业务路径与带宽分配，本身无权操作设备。',
+      inputs:['授权快照、业务原 QoS 要求、可写范围与搜索预算','选定的工具编号（内置 A–L 或自定义纯规则 M）'],
+      outputs:['覆盖全部业务的候选配置 target 与搜索审计 audit','无解时返回明确原因，绝不越权改写保护业务'],
+      files:'docs/RULES.md · config/example-rules.json · config/branch-rules.json · src/branch_rules.py'
+    },
+    guard: {
+      name:'方案校验关口', sub:'权限 · 容量 / QoS · 状态版本', detail:'逐项核验 · 不通过退回', color:'amber', pos:[1112,588,180],
+      owner:'系统集成组', replaceable:false,
+      summary:'执行前最后一道硬防线。独立复核路径连通性、共享链路容量、业务原 QoS、保护名单与状态版本；版本过期或超限直接退回重算。',
+      inputs:['求解器候选方案 + RC 授权申请','知识硬约束 + 仿真最新执行前状态版本'],
+      outputs:['校验通过后放行给唯一设备执行器','拒绝时返回精确约束或版本过期原因交 RC 重算'],
+      files:'src/packet/packet_roles.py · src/rule_component.py'
+    },
+    executor: {
+      name:'唯一设备执行器', sub:'唯一配置写入口 · 提交与读回', detail:'顺序下发 · ACK · 逐跳确认', color:'amber', pos:[1402,588,230],
+      owner:'系统集成组', replaceable:false,
+      summary:'全系统唯一的设备写入口。按序发送配置指令，维护幂等指令编号（重试返回 duplicate 不重复生效），并做逐跳读回确认实际配置。',
+      inputs:['校验关口放行的合法有序动作','仿真网络返回的 ACK 回执与逐跳查询结果'],
+      outputs:['经分组网络下发的设备配置命令','带指令号、生效状态与逐跳读回的真实证据（交 OM 签收）'],
+      files:'src/packet/packet_device.py · src/packet/packet_device_readback.py'
+    },
+    input: {
+      name:'场景与业务输入', sub:'拓扑 · 业务需求 · 动态事件脚本', detail:'赛事数据仅存本地 / 服务器', color:'blue', pos:[195,882,220],
+      owner:'官方赛事数据（保密，不入公开仓）', replaceable:false,
+      summary:'由赛事方单独分发的拓扑、业务清单与动态事件脚本。仅存放在本地或服务器授权目录，通过 B03_DATA 环境变量挂载。',
+      inputs:['本地/服务器授权目录中的官方场景包'],
+      outputs:['向仿真环境输入初始拓扑与按仿真时钟推进的事件','向控制侧提供原始业务带宽、QoS 与优先级'],
+      files:'docs/ASSETS.md（通过环境变量 B03_DATA 指定，严禁推到 GitHub）'
+    },
+    environment: {
+      name:'分组网络仿真环境', sub:'resnet_py 1.1.0 · 纳秒时钟与队列', detail:'真实观测与物理设备生效反馈', color:'cyan', pos:[820,882,580],
+      owner:'仿真组（可热替换）', replaceable:true, badge:'可替换 · 仿真组',
+      summary:'基于 SimPy 纳秒时钟的分组级网络仿真引擎。上报、配置指令与读回都真实经过网络队列与丢包，提供不可篡改的底层反馈。',
+      inputs:['初始场景拓扑、业务与事件脚本','唯一执行器提交的合法配置指令与读回查询'],
+      outputs:['按实际到达时刻标定的网络观测上报','指令 ACK、物理生效状态、逐跳读回与业务分组统计'],
+      files:'docs/SIMULATOR.md · config/example-simulator.json · src/example_simulator.py'
+    },
+    evaluation: {
+      name:'运行记录与离线核验', sub:'run.py verify · 五项指标 · U / W', detail:'全链路轨迹归档与同条件复算', color:'muted', pos:[1405,882,230],
+      owner:'系统集成组', replaceable:false,
+      summary:'将每次运行封存为 CONDITIONS.json、b03.jsonl 与 SUMMARY.json。支持离线复算五项赛题指标、U/W、组件指纹与历史回执对照。',
+      inputs:['仿真业务账本、OM/RC 工单轨迹、执行器读回记录','组件清单与源码/引擎指纹'],
+      outputs:['三段时延、连通度、业务保障率与 U / W 指标报告','支持 --strict-source 校验的独立复核 JSON'],
+      files:'run.py verify · docs/PROVENANCE.md · docs/RELEASE_RESULTS.md'
+    }
+  };
+
+  const EDGES = [
+    { id:'input-environment', from:'input', to:'environment', sA:'r', sB:'l', dyA:22, dyB:22, mid:(s,e)=>[[400,s[1]],[400,e[1]]], lp:[418,924], lbl:'场景初始化 / 事件', tone:'muted', primary:false },
+    { id:'input-rc', from:'input', to:'rc', sA:'r', sB:'l', dyA:-24, dyB:32, mid:(s,e)=>[[404,s[1]],[404,e[1]]], lp:[398,796], lbl:'原始需求与优先级', tone:'cyan', primary:false },
+    { id:'environment-orchestrator', from:'environment', to:'orchestrator', sA:'l', sB:'l', dyA:-30, dyB:0, mid:(s,e)=>[[34,s[1]],[34,e[1]]], lp:[276,95], lbl:'事件触发', tone:'muted', primary:false },
+    { id:'orchestrator-om', from:'orchestrator', to:'om', sA:'l', sB:'l', dyA:16, dyB:-34, mid:(s,e)=>[[568,s[1]],[568,e[1]]], lp:[578,162], lbl:'诊断 / 复核派单', tone:'muted', primary:false },
+    { id:'orchestrator-rc', from:'orchestrator', to:'rc', sA:'r', sB:'r', dyA:16, dyB:-34, mid:(s,e)=>[[994,s[1]],[994,496],[900,496],[900,e[1]]], lp:[1118,140], lbl:'资源派单', tone:'muted', primary:false },
+    { id:'environment-om', from:'environment', to:'om', sA:'l', sB:'l', dyA:-14, dyB:24, mid:(s,e)=>[[478,s[1]],[478,e[1]]], lp:[478,720], lbl:'观测上报 / 复核样本', tone:'blue', primary:true },
+    { id:'om-rc', from:'om', to:'rc', sA:'l', sB:'l', dyA:34, dyB:-34, mid:(s,e)=>[[548,s[1]],[548,e[1]]], lp:[652,466], lbl:'鉴权开单 (A2A)', tone:'cyan', primary:true },
+    { id:'model-om', from:'model', to:'om', sA:'r', sB:'l', dyA:-20, dyB:-20, mid:[], lp:[480,306], lbl:'按需诊断推理', tone:'purple', primary:false },
+    { id:'knowledge-om', from:'knowledge', to:'om', sA:'r', sB:'l', dyA:-24, dyB:8, mid:(s,e)=>[[508,s[1]],[508,e[1]]], lp:[486,404], lbl:'规则查询', tone:'purple', primary:false },
+    { id:'rc-model', from:'rc', to:'model', sA:'l', sB:'r', dyA:-24, dyB:22, mid:(s,e)=>[[444,s[1]],[444,e[1]]], lp:[450,488], lbl:'选合法工具', tone:'purple', primary:true },
+    { id:'rc-knowledge', from:'rc', to:'knowledge', sA:'l', sB:'r', dyA:10, dyB:10, mid:[], lp:[478,616], lbl:'K044 / 技术知识', tone:'purple', primary:false },
+    { id:'rc-solver', from:'rc', to:'solver', sA:'r', sB:'l', dyA:-24, dyB:24, mid:(s,e)=>[[968,s[1]],[968,e[1]]], lp:[968,428], lbl:'求解候选方案', tone:'cyan', primary:true },
+    { id:'environment-solver', from:'environment', to:'solver', sA:'r', sB:'r', dyA:-20, dyB:26, mid:(s,e)=>[[1210,s[1]],[1210,412],[1302,412],[1302,e[1]]], lp:[1362,424], lbl:'计算快照', tone:'muted', primary:false },
+    { id:'solver-guard', from:'solver', to:'guard', sA:'l', sB:'l', dyA:34, dyB:-28, mid:(s,e)=>[[1012,s[1]],[1012,474],[990,474],[990,e[1]]], lp:[1002,488], lbl:'候选方案', tone:'purple', primary:true },
+    { id:'rc-guard', from:'rc', to:'guard', sA:'r', sB:'l', dyA:14, dyB:14, mid:[], lp:[944,608], lbl:'执行申请 / 退回', tone:'cyan', primary:true },
+    { id:'knowledge-guard', from:'knowledge', to:'guard', sA:'r', sB:'l', dyA:34, dyB:34, mid:(s,e)=>[[428,s[1]],[428,706],[992,706],[992,e[1]]], lp:[715,706], lbl:'结构化硬约束', tone:'purple', primary:false },
+    { id:'environment-guard', from:'environment', to:'guard', sA:'r', sB:'r', dyA:0, dyB:32, mid:(s,e)=>[[1236,s[1]],[1236,e[1]]], lp:[1182,814], lbl:'执行前状态', tone:'muted', primary:false },
+    { id:'guard-executor', from:'guard', to:'executor', sA:'r', sB:'l', dyA:-4, dyB:-4, mid:[], lp:[1250,560], lbl:'校验放行', tone:'amber', primary:true },
+    { id:'executor-environment', from:'executor', to:'environment', sA:'r', sB:'r', dyA:-22, dyB:20, mid:(s,e)=>[[1554,s[1]],[1554,940],[e[0]+22,940],[e[0]+22,e[1]]], lp:[1462,748], lbl:'下发 / 逐跳读回', tone:'amber', primary:true },
+    { id:'executor-orchestrator', from:'executor', to:'orchestrator', sA:'r', sB:'r', dyA:-38, dyB:0, mid:(s,e)=>[[1572,s[1]],[1572,e[1]]], lp:[1358,95], lbl:'冲突占用锁', tone:'muted', primary:false },
+    { id:'executor-om', from:'executor', to:'om', sA:'r', sB:'r', dyA:4, dyB:34, mid:(s,e)=>[[1534,s[1]],[1534,728],[916,728],[916,e[1]]], lp:[1152,728], lbl:'读回证据 → 复核签收', tone:'green', primary:true },
+    { id:'om-evaluation', from:'om', to:'evaluation', sA:'l', sB:'l', dyA:16, dyB:10, mid:(s,e)=>[[534,s[1]],[534,1024],[1262,1024],[1262,e[1]]], lp:[820,1024], lbl:'工单轨迹与核验归档', tone:'record', primary:false },
+    { id:'environment-evaluation', from:'environment', to:'evaluation', sA:'r', sB:'l', dyA:34, dyB:-14, mid:(s,e)=>[[1228,s[1]],[1228,e[1]]], lp:[1210,954], lbl:'业务指标账本', tone:'record', primary:false }
+  ];
+
+  const SCENARIOS = {
+    normal: [
+      { phase:'1 / 装入与触发', edge:'input-environment', rev:false, title:'加载场景并触发链路降级',
+        desc:'仿真环境从本地 B03_DATA 加载拓扑与业务，按仿真时钟推进。示例链路 Link-X 带宽从 20 Mbps 骤降至 2.0 Mbps，经过它的业务 A、B 合计需要 2.4 Mbps，出现容量缺口。',
+        ledger:{auth:'待感知', cfg:'未下发', qos:'出现缺口'} },
+      { phase:'2 / 观测上报', edge:'environment-om', rev:false, title:'OM 收到经分组网络送达的观测',
+        desc:'节点探针采样链路状态并经分组网络发给控制面。OM 只看“实际到达”的观测快照，绝不偷看仿真真值或未来事件。',
+        proof:'感知时延 = 事件发生时刻 → 两端最新状态上报均到达 OM 的时刻。',
+        ledger:{auth:'已感知', cfg:'未下发', qos:'待处置'} },
+      { phase:'3 / 鉴权开单', edge:'om-rc', rev:false, title:'OM 开立工单并发放写权限 (A2A 1.0)',
+        desc:'OM 诊断出 Link-X 容量不足，创建工单 WO-DEMO，明确本次允许调整的业务范围（如 B）、保护业务名单和目标状态版本，经 A2A 1.0 协议交给 RC。',
+        code:'src/packet/packet_a2a.py · B03_A2A_TIMEOUT_S 默认 300s',
+        ledger:{auth:'已签发 WO-DEMO', cfg:'未下发', qos:'待处置'} },
+      { phase:'4 / 工具选择', edge:'rc-model', rev:false, title:'RC 调用模型（或固定规则）选合法工具',
+        desc:'RC 把结构化观测和当前合法工具目录（如 A–L）交给模型引擎。固定策略（如 --policy I）与冻结/INT8/PPO 模型走完全相同的工单通道，只在这一步切换选工具方式。',
+        code:'模型组替换入口：docs/MODEL.md · config/example-model.json',
+        ledger:{auth:'已签发 WO-DEMO', cfg:'选工具中', qos:'待处置'} },
+      { phase:'5 / 知识查询', edge:'rc-knowledge', rev:false, title:'按需查询只读技术知识（如 K044）',
+        desc:'当存在待准入或新需求修订时，RC 查询版本化知识库（如 K044 准入检查），核对原方案保留与速率约束，查询记录完整写入工单轨迹。',
+        code:'知识库组替换入口：docs/KNOWLEDGE.md · config/example-knowledge.json',
+        ledger:{auth:'已签发 WO-DEMO', cfg:'知识核对完成', qos:'待处置'} },
+      { phase:'6 / 路径求解', edge:'rc-solver', rev:false, title:'调度规则求解器计算具体路径与带宽',
+        desc:'RC 将选定的工具号、授权可写集合与快照交给规则求解器。求解器是纯数值计算模块（无设备写权限），算出将业务 B 迁至备用路径 P2 的候选方案与搜索审计。',
+        code:'规则组替换入口：docs/RULES.md · config/branch-rules.json',
+        ledger:{auth:'已签发 WO-DEMO', cfg:'候选方案就绪', qos:'待处置'} },
+      { phase:'7 / 提交校验', edge:'rc-guard', rev:false, title:'RC 向方案校验关口提交执行申请',
+        desc:'候选方案不直接下发设备。RC 带着工单授权、方案编号与基准状态版本 S1 向校验关口提出申请，同时校验器独立加载硬约束与当前最新状态。',
+        ledger:{auth:'已签发 WO-DEMO', cfg:'校验中', qos:'待处置'} },
+      { phase:'8 / 关口放行', edge:'guard-executor', rev:false, title:'逐项核验通过，放行给唯一执行器',
+        desc:'校验器独立检查：① 路径连贯与容量不超配；② 满足原业务带宽/时延/丢包要求；③ 未触碰保护业务；④ 状态版本仍为 S1。全部通过后交唯一执行器。',
+        proof:'任何一项不满足都会直接拦下，不会向设备写入半成品配置。',
+        ledger:{auth:'校验通过', cfg:'准备下发', qos:'待处置'} },
+      { phase:'9 / 唯一写入', edge:'executor-environment', rev:false, title:'唯一执行器按序下发配置指令',
+        desc:'全系统只有一个配置写入口，按序向相关节点发送释放/安装配置命令并登记幂等指令号。控制命令同样在分组仿真网络里排队传输。',
+        code:'src/packet/packet_device.py（重发同指令号返回 duplicate）',
+        ledger:{auth:'校验通过', cfg:'已下发 · 等 ACK', qos:'恢复中'} },
+      { phase:'10 / 逐跳读回', edge:'executor-environment', rev:true, title:'收到 ACK 后必须做逐跳读回确认',
+        desc:'收到设备受理 ACK 不等于生效，更不等于业务恢复。执行器沿路径逐跳查询实际生效的转发表与配置版本，确认与获准方案逐项一致。',
+        code:'src/packet/packet_device_readback.py',
+        ledger:{auth:'校验通过', cfg:'逐跳读回已确认', qos:'待复核'} },
+      { phase:'11 / 复核签收', edge:'executor-om', rev:false, title:'读回证据交回 OM 完成签收',
+        desc:'执行器将生效配置版本和逐跳读回清单交给 OM。OM 对照原始业务需求与保护名单完成复核，正式签收本张工单。',
+        ledger:{auth:'OM 已签收', cfg:'逐跳读回已确认', qos:'已达标'} },
+      { phase:'12 / 离线核验', edge:'om-evaluation', rev:false, title:'轨迹封存并由 run.py verify 复算指标',
+        desc:'完整工单写入 CONDITIONS.json、b03.jsonl 与 SUMMARY.json。所有人可用 run.py verify 离线复算三段时延、连通度、业务保障率、U / W 与组件指纹。',
+        code:'python run.py verify runs/first --report runs/check.json',
+        terminal:'闭环完成 · 工单已签收并可同条件复现', tone:'ok',
+        ledger:{auth:'OM 已签收', cfg:'已封存归档', qos:'核验通过'} }
+    ],
+    teams: [
+      { phase:'组件 1 / 4', nodes:['model'], edge:'rc-model', rev:false, title:'模型组：换模型 / 量化 / 联训',
+        desc:'只实现 build_model(...) 返回带 choose(observation) 的对象。接收到达 RC 的观测，返回合法 tool_id 和 policyVersion。支持冻结推理、CPU 动态 INT8 与在线 PPO 恢复。',
+        proof:'注意：已训练权重只认识训练时见过的工具语义；若规则组新增了新工具，需配合登记新目录并补训对齐。',
+        code:'文档：docs/MODEL.md\n示例配置：config/example-model.json · config/int8-model.json',
+        ledger:{auth:'无需改动', cfg:'无需改动', qos:'同口径复算'} },
+      { phase:'组件 2 / 4', nodes:['solver'], edge:'rc-solver', rev:false, title:'规则组：换路径与共享容量求解算法',
+        desc:'实现 build_rules(...) 提供 enumerate_actions 与 solve_action，在授权范围内输出候选路径与搜索审计。可先用固定工具（如 --policy M）独立验证收益，再决定是否让模型学习新动作。',
+        proof:'控制器会自动运行独立校验、开局准入、唯一写入与逐跳读回，规则组专注算法本身即可。',
+        code:'文档：docs/RULES.md\n示例配置：config/example-rules.json · config/branch-rules.json',
+        ledger:{auth:'由主控校验', cfg:'由主控下发', qos:'同口径复算'} },
+      { phase:'组件 3 / 4', nodes:['knowledge'], edge:'rc-knowledge', rev:false, title:'知识库组：维护版本化知识与检索器',
+        desc:'发布 b03.knowledge.v1 JSON 知识版次，或实现 build_knowledge(...) 提供 lookup(identifier=..., topic=...) 检索器。每次查询的 ID、来源与命中结果都会被 verify 严格核验。',
+        proof:'技术知识是只读参考与准入校验依据，不会越权修改原始业务 QoS 或实时写权限。',
+        code:'文档：docs/KNOWLEDGE.md\n示例配置：config/knowledge-v2.json · config/example-knowledge.json',
+        ledger:{auth:'只读留痕', cfg:'不越权写设备', qos:'同口径复算'} },
+      { phase:'组件 4 / 4', nodes:['environment'], edge:'executor-environment', rev:true, title:'仿真组：换仿真适配器或兼容引擎',
+        desc:'遵循 b03.packet-simulator.v1 契约，实现 build(settings) 返回兼容 Simulation 子类（如事件触发的本地端口快报 example_simulator.py）。引擎改动通过 engineLock 做逐字节 SHA-256 锁定。',
+        proof:'上报时刻、网络排队与设备读回都真实计入仿真时钟，方便把“感知变快”与“策略变优”分开衡量。',
+        code:'文档：docs/SIMULATOR.md\n示例配置：config/example-simulator.json',
+        ledger:{auth:'保持契约', cfg:'真实队列读回', qos:'时钟分离计量'} },
+      { phase:'总装与评测', nodes:['om','rc','guard','executor','evaluation'], edge:'om-evaluation', rev:false, title:'系统集成组：守住闭环与公平对照',
+        desc:'维护 OM/RC、A2A 通信、权限与动作目录、方案校验、唯一执行器与 run.py verify 核验器。各组提 PR 时每次尽量只换 1 个组件，附上配置差异、复现命令和同条件 verify 对照表即可合入。',
+        code:'默认清单：config/components.json · 协作说明：docs/COLLABORATION_zh.md',
+        terminal:'四组接口边界清晰 · 每次对比只换 1 个组件', tone:'ok',
+        ledger:{auth:'统一契约', cfg:'统一执行读回', qos:'统一五指标核验'} }
+    ],
+    stale: [
+      { phase:'1 / 旧快照求解', edge:'rc-solver', rev:false, title:'方案按旧状态 S1 计算完成',
+        desc:'RC 与规则求解器基于网络快照 S1 算出了迁移方案 PLAN-1，准备申请下发。',
+        ledger:{auth:'WO-DEMO (S1)', cfg:'候选 PLAN-1', qos:'待处置'} },
+      { phase:'2 / 执行前取真态', edge:'environment-guard', rev:false, title:'下发前网络已更新到 S2',
+        desc:'在求解期间，仿真网络又发生了变化，当前执行前状态版本已经推进到 S2。校验关口自动比对版本号，发现申请版本 S1 已过期。',
+        ledger:{auth:'WO-DEMO (S1)', cfg:'版本冲突 S1≠S2', qos:'待处置'} },
+      { phase:'3 / 拦截退回', edge:'rc-guard', rev:true, title:'校验器拒绝下发，退回 RC 重算',
+        desc:'关口直接拦截 PLAN-1，不向设备发任何指令，并将“状态版本过期”作为明确拒绝理由退回给 RC。',
+        proof:'防止用过期拓扑把业务迁到刚刚拥塞或断开的链路上。',
+        ledger:{auth:'原授权有效', cfg:'未下发 · 已退回', qos:'待重算'} },
+      { phase:'4 / 刷新重算', edge:'environment-solver', rev:false, title:'获取最新 S2 快照重新求解',
+        desc:'RC 保留原业务要求和保护名单，用最新快照 S2 重新调用规则求解器，生成新方案 PLAN-2。',
+        ledger:{auth:'WO-DEMO (S2)', cfg:'新方案 PLAN-2', qos:'重算中'} },
+      { phase:'5 / 复核放行', edge:'guard-executor', rev:false, title:'PLAN-2 通过 S2 校验，安全放行',
+        desc:'校验关口确认 PLAN-2 与当前 S2 版本、容量和保护约束完全一致，放行给唯一设备执行器。',
+        ledger:{auth:'S2 校验通过', cfg:'准备下发', qos:'恢复中'} },
+      { phase:'6 / 下发与读回', edge:'executor-environment', rev:false, title:'下发并逐跳读回确认生效',
+        desc:'执行器按序写入 PLAN-2 并逐跳读回确认无误，再交 OM 完成业务复核签收。',
+        terminal:'过期方案已拦截 · 基于 S2 安全恢复', tone:'ok',
+        ledger:{auth:'OM 已签收', cfg:'逐跳读回已确认', qos:'已达标'} }
+    ],
+    readback: [
+      { phase:'1 / 下发指令', edge:'executor-environment', rev:false, title:'执行器发出配置指令，仅收到受理 ACK',
+        desc:'执行器以唯一指令号 CMD-01 下发迁移配置并收到节点受理 ACK，但随后的读回报文丢包或信息不全，尚不能证明新路径已真正生效。',
+        ledger:{auth:'校验通过', cfg:'已受理 · 读回缺证', qos:'待确认'} },
+      { phase:'2 / 冲突锁定', edge:'executor-orchestrator', rev:false, title:'保留对象占用，禁止并发踩踏',
+        desc:'执行器立即通知编排：CMD-01 状态待确认。编排锁定该业务的配置对象，暂停其他工单对该对象的写操作，避免盲目重发引发错乱。',
+        proof:'ACK ≠ 配置生效；重发相同指令号会命中幂等账本返回 duplicate，不会重复写入。',
+        ledger:{auth:'对象锁定中', cfg:'待确认', qos:'待确认'} },
+      { phase:'3 / 交运维补查', edge:'executor-om', rev:false, title:'交由 OM 沿原指令号只读补查',
+        desc:'执行器把原指令号 CMD-01 交运维 OM，由 OM 向仿真设备发起只读查询，核对实际转发表与配置版本。',
+        ledger:{auth:'对象锁定中', cfg:'OM 补查中', qos:'待确认'} },
+      { phase:'4 / 读回补齐', edge:'environment-om', rev:false, title:'补查确认 CMD-01 已真实生效',
+        desc:'仿真返回对应配置版本、实际转发路径和业务指标样本，三项与原获准请求完全一致。',
+        ledger:{auth:'证据补齐', cfg:'已确认生效', qos:'已达标'} },
+      { phase:'5 / 解锁结案', edge:'om-evaluation', rev:false, title:'释放锁定并归档完整证据链',
+        desc:'OM 签收结案并通知编排释放对象锁定，全过程指令号、重试与补查证据全部写入 b03.jsonl 供离线复核。',
+        terminal:'幂等补查闭环 · 零重复生效', tone:'ok',
+        ledger:{auth:'已解锁 · 签收', cfg:'证据完整', qos:'核验通过'} }
+    ]
+  };
+
+  const svg = document.getElementById('system-graph');
+  const el = (tag, attrs={}, parent=null) => {
+    const node = document.createElementNS(NS, tag);
+    for (const [k,v] of Object.entries(attrs)) if (v != null) node.setAttribute(k, String(v));
+    if (parent) parent.appendChild(node);
+    return node;
+  };
+  const r1 = v => Math.round(v*10)/10;
+  const rounded = pts => {
+    const c = pts.filter((p,i)=>!i || p[0]!==pts[i-1][0] || p[1]!==pts[i-1][1]);
+    if (c.length < 2) return '';
+    let d = `M${r1(c[0][0])},${r1(c[0][1])}`;
+    for (let i=1; i<c.length-1; i++) {
+      const a=c[i-1], b=c[i], e=c[i+1];
+      const ab=Math.hypot(b[0]-a[0],b[1]-a[1]), bc=Math.hypot(e[0]-b[0],e[1]-b[1]);
+      if (!ab || !bc) continue;
+      const r=Math.min(10, ab/3, bc/3);
+      const q=[b[0]+(a[0]-b[0])*r/ab, b[1]+(a[1]-b[1])*r/ab];
+      const z=[b[0]+(e[0]-b[0])*r/bc, b[1]+(e[1]-b[1])*r/bc];
+      d += `L${r1(q[0])},${r1(q[1])}Q${r1(b[0])},${r1(b[1])} ${r1(z[0])},${r1(z[1])}`;
+    }
+    const last = c[c.length-1];
+    return d + `L${r1(last[0])},${r1(last[1])}`;
+  };
+  const anchor = (id, side, dy=0) => {
+    const [x,y,w] = NODES[id].pos;
+    return [x + (side==='l' ? -w/2 : w/2), y + dy];
+  };
+  const tw = (s, fs) => Array.from(s).reduce((a,c)=>a + (/^[\x00-\x7F]$/.test(c)?0.56:1.02), 0) * fs;
+
+  const nodeEls = new Map();
+  const edgeEls = new Map();
+
+  function buildGraph() {
+    svg.replaceChildren();
+    const defs = el('defs', {}, svg);
+    for (const [name, col] of Object.entries(COLORS)) {
+      const g = el('linearGradient', {id:`grad-${name}`, x1:'0', y1:'0', x2:'0.8', y2:'1'}, defs);
+      el('stop', {offset:'0%', 'stop-color':col, 'stop-opacity':'0.22'}, g);
+      el('stop', {offset:'100%', 'stop-color':'#101f36', 'stop-opacity':'0.98'}, g);
+      const m = el('marker', {id:`arrow-${name}`, viewBox:'0 0 10 10', refX:'8.2', refY:'5', markerWidth:'7', markerHeight:'7', orient:'auto-start-reverse', markerUnits:'userSpaceOnUse'}, defs);
+      el('path', {d:'M1 1L9 5L1 9Z', fill:col}, m);
+    }
+
+    const bg = el('g', {'aria-hidden':'true'}, svg);
+    const plate = (x,y,w,h,ck,title) => {
+      const c = COLORS[ck];
+      el('polygon', {points:`${x},${y+h} ${x+w},${y+h} ${x+w+14},${y+h+16} ${x+14},${y+h+16}`, fill:c, 'fill-opacity':'0.065', stroke:c, 'stroke-opacity':'0.18'}, bg);
+      el('polygon', {points:`${x+w},${y} ${x+w+14},${y+16} ${x+w+14},${y+h+16} ${x+w},${y+h}`, fill:c, 'fill-opacity':'0.045', stroke:c, 'stroke-opacity':'0.15'}, bg);
+      el('rect', {x, y, width:w, height:h, rx:26, fill:'#101e33', 'fill-opacity':'0.52', stroke:c, 'stroke-opacity':'0.26', 'stroke-width':'1.3'}, bg);
+      const t = el('text', {x:x+14, y:y-18, 'font-size':'22', 'font-weight':'700', fill:'#eef4ff'}, bg);
+      t.textContent = title;
+    };
+    plate(55,215,360,488,'purple','模型与知识（推理与依据）');
+    plate(555,215,330,488,'cyan','双智能体协作（A2A 1.0）');
+    plate(1005,215,540,488,'amber','求解与受控执行');
+    el('path', {d:'M1260 472V680', stroke:'#f5bd70', 'stroke-width':'1.5', 'stroke-dasharray':'5 6', opacity:'0.5'}, bg);
+    el('text', {x:1272, y:468, 'font-size':'14', 'font-weight':'600', fill:'#f5bd70'}, bg).textContent = '动作权限边界';
+    el('path', {d:'M55 772H1555', stroke:'#31506d', 'stroke-width':'1.3', 'stroke-dasharray':'6 7', fill:'none'}, bg);
+    el('text', {x:58, y:754, 'font-size':'15', 'font-weight':'600', fill:'#9fc0db'}, bg).textContent = '外部输入 / 分组网络仿真环境 / 离线核验';
+
+    const wireLayer = el('g', {}, svg);
+    const nodeLayer = el('g', {}, svg);
+    const labelLayer = el('g', {}, svg);
+
+    for (const e of EDGES) {
+      const s = anchor(e.from, e.sA, e.dyA), en = anchor(e.to, e.sB, e.dyB);
+      const mids = typeof e.mid === 'function' ? e.mid(s, en) : e.mid;
+      const pts = [s, ...mids, en];
+      const d = rounded(pts);
+      const col = COLORS[e.tone];
+      const g = el('g', {class:'sg-edge', 'data-edge':e.id}, wireLayer);
+      el('path', {d, fill:'none', stroke:'#081322', 'stroke-width':'5', 'stroke-opacity':'0.88'}, g);
+      const base = el('path', {d, fill:'none', stroke:col, 'stroke-width':e.primary?'2.7':'1.45', 'stroke-opacity':e.primary?'0.88':'0.55', 'stroke-linecap':'round', 'stroke-linejoin':'round', 'stroke-dasharray':e.tone==='record'?'5 4':null, 'marker-end':`url(#arrow-${e.tone})`}, g);
+      const flow = el('path', {d, class:'sg-flow-path', stroke:col, 'marker-end':`url(#arrow-${e.tone})`, style:'display:none'}, g);
+      el('circle', {cx:s[0], cy:s[1], r:3, fill:'#091525', stroke:col, 'stroke-width':'1.3'}, g);
+      el('circle', {cx:en[0], cy:en[1], r:3, fill:'#091525', stroke:col, 'stroke-width':'1.3'}, g);
+
+      const lg = el('g', {class:'sg-edge', transform:`translate(${e.lp[0]} ${e.lp[1]})`}, labelLayer);
+      const fs = e.primary ? 15 : 13.5;
+      const bw = tw(e.lbl, fs) + 20, bh = e.primary ? 25 : 22;
+      el('rect', {x:-bw/2, y:-bh/2, width:bw, height:bh, rx:6, fill:'#0b1729', 'fill-opacity':'0.96', stroke:e.primary?col:'#263f58', 'stroke-opacity':e.primary?'0.55':'1'}, lg);
+      el('text', {x:0, y:5, 'text-anchor':'middle', 'font-size':fs, 'font-weight':e.primary?'600':'500', fill:e.primary?'#ebf6ff':'#b4c9df'}, lg).textContent = e.lbl;
+      if (!e.primary && !['environment-orchestrator','rc-knowledge','knowledge-guard','om-evaluation','input-environment'].includes(e.id)) {
+        lg.style.display = 'none';
+      }
+      edgeEls.set(e.id, {def:e, g, base, flow, lg, pts});
+    }
+
+    for (const [id, info] of Object.entries(NODES)) {
+      const [x,y,w] = info.pos;
+      const c = COLORS[info.color], fill = `url(#grad-${info.color})`;
+      const g = el('g', {class:'sg-node', transform:`translate(${x} ${y})`, tabindex:'0', role:'button', 'aria-label':info.name}, nodeLayer);
+      const focus = el('rect', {class:'sg-focus', x:-w/2-12, y:-108, width:w+24, height:232, rx:18, fill:'transparent', stroke:c, 'stroke-width':'1.8', 'stroke-opacity':'0'}, g);
+      el('polygon', {points:`${-w/2},45 ${w/2-15},45 ${w/2},64 ${-w/2+15},64`, fill:'#16283d', stroke:c, 'stroke-opacity':'0.25'}, g);
+      el('path', {d:`M${-w/2+15} 64V72H${w/2}V64`, fill:'#142437', stroke:c, 'stroke-opacity':'0.35'}, g);
+
+      if (id==='model') {
+        for (let i=2;i>=0;i--){const yy=i*16; el('polygon',{points:`-113,${yy-41} 83,${yy-41} 113,${yy+4} -83,${yy+4}`,fill,stroke:c,'stroke-width':'1.9'},g); el('polygon',{points:`-83,${yy+4} 113,${yy+4} 113,${yy+15} -83,${yy+15}`,fill:'#22304b',stroke:c,'stroke-opacity':'0.5'},g);}
+        el('path',{d:'M-66 -22L-25 -36L19 -10L58 -29M19 -10L62 6',fill:'none',stroke:c,'stroke-width':'2.4','stroke-linecap':'round'},g);
+        [[-66,-22],[-25,-36],[19,-10],[58,-29],[62,6]].forEach(([px,py])=>el('circle',{cx:px,cy:py,r:5,fill:c},g));
+        el('text',{x:-11,y:37,'text-anchor':'middle','font-size':'18','font-weight':'600',fill:'#d2caff'},g).textContent='量化 / RL';
+      } else if (id==='knowledge') {
+        el('polygon',{points:'-115,-34 -7,-13 -7,61 -115,39',fill,stroke:c,'stroke-width':'1.9'},g);
+        el('polygon',{points:'-7,-13 115,-43 115,32 -7,61',fill,stroke:c,'stroke-width':'1.9'},g);
+        el('path',{d:'M-106 46L-7 69L124 38M-7 -13V61',fill:'none',stroke:c,'stroke-width':'2.4'},g);
+        for(let j=0;j<3;j++){el('path',{d:`M-91 ${-10+j*17}L-30 ${2+j*17}`,stroke:c,'stroke-width':'1.8',opacity:'0.8'},g);el('path',{d:`M20 ${-2+j*17}L87 ${-19+j*17}`,stroke:c,'stroke-width':'1.8',opacity:'0.8'},g);}
+        el('rect',{x:58,y:-51,width:33,height:24,rx:4,fill:'#685aa1',stroke:'#c5b9ff'},g);
+      } else if (id==='om') {
+        el('rect',{x:-108,y:-47,width:216,height:102,rx:36,fill,stroke:c,'stroke-width':'1.9'},g);
+        el('circle',{cx:0,cy:2,r:39,fill:'#102a3e',stroke:c,'stroke-width':'1.4'},g);
+        el('path',{d:'M-28 1Q0 -26 28 1Q0 28 -28 1Z',fill:'#12263b',stroke:c,'stroke-width':'2.8'},g);
+        el('circle',{cx:0,cy:1,r:10,fill:c},g);
+      } else if (id==='rc') {
+        el('polygon',{points:'-128,-6 -91,-49 86,-49 128,-6 94,54 -94,54',fill,stroke:c,'stroke-width':'1.9'},g);
+        el('circle',{cx:0,cy:0,r:36,fill:'#102a3e',stroke:c,'stroke-width':'1.4'},g);
+        el('circle',{cx:0,cy:-14,r:8,fill:c},g);
+        el('path',{d:'M0 -6V9M-30 30V10H30V30M0 9V30',fill:'none',stroke:c,'stroke-width':'2.4'},g);
+        [-30,0,30].forEach(px=>el('circle',{cx:px,cy:30,r:5,fill:'#0c1a2c',stroke:c,'stroke-width':'2'},g));
+      } else if (id==='solver') {
+        for(let i=2;i>=0;i--){const yy=i*17; el('polygon',{points:`-118,${yy-40} 90,${yy-40} 118,${yy+2} -90,${yy+2}`,fill,stroke:c,'stroke-width':'1.9'},g); el('polygon',{points:`-90,${yy+2} 118,${yy+2} 118,${yy+13} -90,${yy+13}`,fill:'#22304b',stroke:c,'stroke-opacity':'0.5'},g);}
+        el('path',{d:'M-78 -15L-43 -35L0 -11L40 -32L78 -10',fill:'none',stroke:c,'stroke-width':'2.4'},g);
+        el('text',{x:20,y:35,'text-anchor':'middle','font-size':'38','font-family':'Georgia,serif',fill:'#cabdff'},g).textContent='∑';
+      } else if (id==='guard') {
+        el('rect',{x:-79,y:-52,width:158,height:109,rx:10,fill,stroke:c,'stroke-width':'1.9'},g);
+        el('rect',{x:-79,y:-52,width:158,height:20,rx:7,fill:'#5c442d',stroke:c,'stroke-width':'1.4'},g);
+        el('polygon',{points:'0,-28 35,-12 28,24 0,44 -28,24 -35,-12',fill:'#3b342e',stroke:c,'stroke-width':'1.6'},g);
+        el('path',{d:'M-15 7L-3 19L19 -7',fill:'none',stroke:c,'stroke-width':'4','stroke-linecap':'round'},g);
+      } else if (id==='executor') {
+        el('rect',{x:-104,y:-50,width:192,height:107,rx:18,fill,stroke:c,'stroke-width':'1.9'},g);
+        el('polygon',{points:'88,-50 111,-34 111,43 88,57',fill:'#4e3d2e',stroke:c,'stroke-opacity':'0.6'},g);
+        for(let i=0;i<3;i++){const yy=-31+i*30; el('rect',{x:-80,y:yy,width:112,height:15,rx:6,fill:'#102137',stroke:c,'stroke-width':'1.4'},g); el('path',{d:`M40 ${yy+8}H77`,stroke:c,'stroke-width':'2.4'},g);}
+      } else if (id==='environment') {
+        const ew=w-24;
+        el('rect',{x:-ew/2,y:-46,width:ew,height:109,rx:24,fill:'#102b39',stroke:'#5ce0d4','stroke-opacity':'0.65','stroke-width':'1.5'},g);
+        const pts=[[-ew*.40,11],[-ew*.22,-12],[0,32],[ew*.20,-12],[ew*.40,15]];
+        [[0,1],[1,3],[3,4],[0,2],[1,2],[2,3],[2,4]].forEach(([a,b],i)=>el('path',{d:`M${pts[a]}L${pts[b]}`,stroke:i<3?'#5ce0d4':'#527b8d','stroke-width':i<3?'2.8':'1.7'},g));
+        pts.forEach(([cx,cy])=>el('circle',{cx,cy,r:11,fill:'#123c47',stroke:'#8ef4e9','stroke-width':'2'},g));
+        el('text',{x:0,y:56,'text-anchor':'middle','font-size':'14',fill:'#a5c6d4'},g).textContent='SimPy 分组队列 · 真实观测与物理设备生效';
+      } else if (id==='input') {
+        el('polygon',{points:'-63,-51 47,-51 70,-29 70,59 -63,59',fill,stroke:c,'stroke-width':'1.9'},g);
+        el('path',{d:'M47 -51V-28H70M-38 -22H28M-38 -3H43M-38 16H43M-38 35H12',fill:'none',stroke:c,'stroke-width':'2.4'},g);
+      } else if (id==='orchestrator') {
+        const ow=w/2;
+        el('rect',{x:-ow,y:-26,width:w,height:82,rx:18,fill:'#102038',stroke:'#789bbc','stroke-width':'1.4'},g);
+        el('path',{d:`M${-ow+28} 24H${ow-28}`,stroke:'#7eb3ff','stroke-width':'2'},g);
+        [[-.32,'工单派发'],[0,'A2A 通信'],[.32,'冲突仲裁']].forEach(([f,t])=>{const px=f*w; el('circle',{cx:px,cy:24,r:5,fill:'#0c1a2c',stroke:c,'stroke-width':'2'},g); el('path',{d:`M${px} 19V5`,stroke:c,'stroke-width':'2'},g); el('text',{x:px,y:-5,'text-anchor':'middle','font-size':'16',fill:'#cfe2f5'},g).textContent=t;});
+      } else if (id==='evaluation') {
+        el('rect',{x:-103,y:-48,width:206,height:105,rx:12,fill,stroke:c,'stroke-width':'1.9'},g);
+        el('path',{d:'M-77 -28V33H76M-56 15V31M-25 -4V31M8 -21V31M42 1V31',fill:'none',stroke:'#b1c6df','stroke-width':'4','stroke-linecap':'round'},g);
+      }
+
+      const ny = id==='orchestrator' ? -62 : -82, sy = id==='orchestrator' ? -38 : -56;
+      el('text',{x:0,y:ny,'text-anchor':'middle','font-size':'22','font-weight':'700',fill:'#f2f7ff',stroke:'#0b1729','stroke-width':'5','paint-order':'stroke'},g).textContent = info.name;
+      el('text',{x:0,y:sy,'text-anchor':'middle','font-size':'15',fill:'#bfd3e8',stroke:'#0b1729','stroke-width':'4','paint-order':'stroke'},g).textContent = info.sub;
+      if (info.detail) el('text',{x:0,y:88,'text-anchor':'middle','font-size':'14',fill:'#9fb7d0'},g).textContent = info.detail;
+      if (info.badge) {
+        const bw = tw(info.badge, 13.5) + 26;
+        el('rect',{x:-bw/2,y:98,width:bw,height:25,rx:12.5,fill:'#122b40',stroke:c,'stroke-width':'1.5','stroke-dasharray':'4 3'},g);
+        el('text',{x:0,y:115,'text-anchor':'middle','font-size':'13.5','font-weight':'700',fill:c},g).textContent = info.badge;
+      }
+
+      g.addEventListener('click', () => openNodeDialog(id));
+      g.addEventListener('keydown', ev => { if (ev.key==='Enter' || ev.key===' ') { ev.preventDefault(); openNodeDialog(id); }});
+      nodeEls.set(id, g);
+    }
+  }
+
+  const state = { view:'overview', mode:'normal', step:0, playing:false, timer:null };
+
+  function stopPlay() {
+    clearInterval(state.timer);
+    state.timer = null;
+    state.playing = false;
+    document.getElementById('btn-play').textContent = '播放 ▶';
+  }
+
+  function applyHighlight() {
+    if (state.view === 'overview') {
+      nodeEls.forEach(g => { g.classList.remove('sg-dim','sg-active'); });
+      edgeEls.forEach(item => {
+        item.g.classList.remove('sg-dim');
+        item.lg.classList.remove('sg-dim');
+        item.flow.style.display = 'none';
+        const showDef = item.def.primary || ['environment-orchestrator','rc-knowledge','knowledge-guard','om-evaluation','input-environment'].includes(item.def.id);
+        item.lg.style.display = showDef ? '' : 'none';
+      });
+      return;
+    }
+    const list = SCENARIOS[state.mode];
+    const cur = list[state.step];
+    const activeEdge = cur.edge;
+    const activeNodes = new Set(cur.nodes || []);
+    if (activeEdge && edgeEls.has(activeEdge)) {
+      const def = edgeEls.get(activeEdge).def;
+      activeNodes.add(def.from);
+      activeNodes.add(def.to);
+    }
+    nodeEls.forEach((g, id) => {
+      g.classList.toggle('sg-active', activeNodes.has(id));
+      g.classList.toggle('sg-dim', !activeNodes.has(id));
+    });
+    edgeEls.forEach((item, id) => {
+      const hot = id === activeEdge;
+      item.g.classList.toggle('sg-dim', !hot);
+      item.lg.classList.toggle('sg-dim', !hot);
+      item.lg.style.display = hot ? '' : 'none';
+      if (hot) {
+        const pts = cur.rev ? [...item.pts].reverse() : item.pts;
+        item.flow.setAttribute('d', rounded(pts));
+        item.flow.style.display = '';
+      } else {
+        item.flow.style.display = 'none';
+      }
+    });
+  }
+
+  function renderUI() {
+    const isRun = state.view === 'run';
+    document.getElementById('overview-panel').hidden = isRun;
+    document.getElementById('run-panel').hidden = !isRun;
+    document.getElementById('nav-overview').classList.toggle('current', !isRun);
+    document.getElementById('nav-flow').classList.toggle('current', isRun && state.mode !== 'teams');
+    document.getElementById('nav-teams').classList.toggle('current', isRun && state.mode === 'teams');
+    document.getElementById('stage-title').textContent = isRun ? (state.mode==='teams' ? '四组可替换组件定位' : '单工单闭环演进') : '系统全景';
+
+    if (isRun) {
+      const list = SCENARIOS[state.mode];
+      const cur = list[state.step];
+      document.getElementById('mode-select').value = state.mode;
+      document.getElementById('step-phase').textContent = cur.phase;
+      document.getElementById('step-count').textContent = `${state.step+1} / ${list.length}`;
+      document.getElementById('step-fill').style.width = `${((state.step+1)/list.length)*100}%`;
+
+      const part = document.getElementById('step-participants');
+      if (cur.edge && edgeEls.has(cur.edge)) {
+        const def = edgeEls.get(cur.edge).def;
+        const a = cur.rev ? NODES[def.to].name : NODES[def.from].name;
+        const b = cur.rev ? NODES[def.from].name : NODES[def.to].name;
+        part.innerHTML = `<span>${a}</span><i>→</i><span>${b}</span>`;
+      } else {
+        part.innerHTML = (cur.nodes||[]).map(id=>`<span>${NODES[id].name}</span>`).join('');
+      }
+      document.getElementById('step-title').textContent = cur.title;
+      document.getElementById('step-desc').textContent = cur.desc;
+
+      const proof = document.getElementById('step-proof');
+      proof.hidden = !cur.proof;
+      proof.textContent = cur.proof || '';
+
+      const code = document.getElementById('step-code');
+      code.hidden = !cur.code;
+      code.textContent = cur.code || '';
+
+      const term = document.getElementById('step-terminal');
+      term.hidden = !cur.terminal;
+      term.textContent = cur.terminal || '';
+      term.dataset.tone = cur.tone || 'ok';
+
+      document.getElementById('led-auth').textContent = cur.ledger.auth;
+      document.getElementById('led-cfg').textContent = cur.ledger.cfg;
+      document.getElementById('led-qos').textContent = cur.ledger.qos;
+      document.getElementById('btn-prev').disabled = state.step === 0;
+      document.getElementById('btn-next').disabled = state.step === list.length - 1;
+    }
+    applyHighlight();
+  }
+
+  function startMode(mode) {
+    stopPlay();
+    state.view = 'run';
+    state.mode = mode;
+    state.step = 0;
+    renderUI();
+  }
+
+  function openNodeDialog(id) {
+    stopPlay();
+    const n = NODES[id];
+    if (!n) return;
+    document.getElementById('dlg-head-title').textContent = n.name;
+    document.getElementById('dlg-body').innerHTML = `
+      <span class="dlg-badge">${n.owner}</span>
+      <h3>${n.name}</h3>
+      <p>${n.summary}</p>
+      <div class="dlg-grid">
+        <div class="dlg-box"><b>主要输入</b><ul>${n.inputs.map(x=>`<li>${x}</li>`).join('')}</ul></div>
+        <div class="dlg-box"><b>主要输出</b><ul>${n.outputs.map(x=>`<li>${x}</li>`).join('')}</ul></div>
+      </div>
+      <div class="dlg-files">仓库位置：${n.files}</div>
+    `;
+    document.getElementById('node-dialog').showModal();
+  }
+
+  // Event wiring
+  document.getElementById('nav-overview').addEventListener('click', () => { stopPlay(); state.view='overview'; renderUI(); });
+  document.getElementById('nav-flow').addEventListener('click', () => startMode('normal'));
+  document.getElementById('nav-teams').addEventListener('click', () => startMode('teams'));
+  document.getElementById('btn-start-flow').addEventListener('click', () => startMode('normal'));
+  document.getElementById('btn-start-teams').addEventListener('click', () => startMode('teams'));
+  document.getElementById('btn-back').addEventListener('click', () => { stopPlay(); state.view='overview'; renderUI(); });
+  document.getElementById('mode-select').addEventListener('change', ev => startMode(ev.target.value));
+  document.getElementById('btn-prev').addEventListener('click', () => { stopPlay(); if (state.step>0) { state.step--; renderUI(); }});
+  document.getElementById('btn-next').addEventListener('click', () => { stopPlay(); const max=SCENARIOS[state.mode].length-1; if (state.step<max) { state.step++; renderUI(); }});
+  document.getElementById('btn-play').addEventListener('click', () => {
+    if (state.playing) { stopPlay(); return; }
+    const max = SCENARIOS[state.mode].length - 1;
+    if (state.step >= max) { state.step = 0; renderUI(); }
+    state.playing = true;
+    document.getElementById('btn-play').textContent = '暂停 ⏸';
+    state.timer = setInterval(() => {
+      if (state.step < SCENARIOS[state.mode].length - 1) { state.step++; renderUI(); }
+      else { stopPlay(); }
+    }, 3600);
+  });
+
+  document.querySelectorAll('[data-open]').forEach(btn => btn.addEventListener('click', () => openNodeDialog(btn.dataset.open)));
+  document.getElementById('dlg-close').addEventListener('click', () => document.getElementById('node-dialog').close());
+  document.getElementById('node-dialog').addEventListener('click', ev => { if (ev.target.id === 'node-dialog') ev.target.close(); });
+
+  document.getElementById('btn-zoom').addEventListener('click', ev => {
+    const wrap = document.getElementById('graph-wrap');
+    wrap.classList.toggle('zoomed');
+    ev.target.textContent = wrap.classList.contains('zoomed') ? '恢复默认 −' : '放大查看 ＋';
+  });
+  document.getElementById('btn-fit').addEventListener('click', () => {
+    const wrap = document.getElementById('graph-wrap');
+    wrap.classList.remove('zoomed');
+    document.getElementById('btn-zoom').textContent = '放大查看 ＋';
+    wrap.scrollTo({left:0, top:0});
+  });
+  document.getElementById('btn-motion').addEventListener('click', ev => {
+    const on = document.body.classList.toggle('reduced');
+    ev.target.textContent = on ? '已减少动效' : '减少动效';
+  });
+  document.addEventListener('keydown', ev => {
+    if (document.getElementById('node-dialog').open) return;
+    if (state.view !== 'run') return;
+    if (ev.key === 'ArrowRight') { ev.preventDefault(); document.getElementById('btn-next').click(); }
+    else if (ev.key === 'ArrowLeft') { ev.preventDefault(); document.getElementById('btn-prev').click(); }
+    else if (ev.key === ' ') { ev.preventDefault(); document.getElementById('btn-play').click(); }
+  });
+
+  buildGraph();
+  renderUI();
+})();
+</script>
+</body>
+</html>
