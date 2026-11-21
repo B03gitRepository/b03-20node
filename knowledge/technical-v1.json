@@ -1,0 +1,36 @@
+{
+  "schema": "b03.knowledge.v1",
+  "version": "1.0.0",
+  "entries": [
+    {
+      "id": "K044",
+      "topics": [
+        "admission",
+        "residual capacity",
+        "QoS"
+      ],
+      "content": "On the first authorized work order, retain installed paths and original payload rates. Search bounded residual paths for each writable unmet service in priority order. Validate each proposal and debit its wire reservation before testing the next service.",
+      "sources": [
+        "src/opening.py",
+        "src/packet/packet_roles.py"
+      ],
+      "applicability": "Work-order mode with the residual initial-admission setting, delivered observations and an active writable request."
+    },
+    {
+      "id": "K045",
+      "topics": [
+        "packet simulation",
+        "measurement",
+        "readback",
+        "clock"
+      ],
+      "content": "OM authorizes a work order using delivered reports. RC selects a legal tool and submits a plan. Devices apply versioned commands. OM confirms actual paths from per-hop readback. Integrate unmet service seconds (U) and priority-weighted seconds (W) over the scoring window.",
+      "sources": [
+        "src/packet/packet_roles.py",
+        "src/packet/packet_device_readback.py",
+        "src/packet/packet_measure.py"
+      ],
+      "applicability": "B03 packet work orders with the pinned resnet engine and measurements taken on the same simulation clock."
+    }
+  ]
+}
