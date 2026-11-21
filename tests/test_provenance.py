@@ -54,6 +54,21 @@ def wheel(folder, name, payload, requires=(), top=None):
     return path
 
 
+class WorkOrderIdentityTests(unittest.TestCase):
+    def test_offline_check_binds_policy_fingerprint_and_accepts_prior_receipts(self):
+        from component_config import work_order_components_digest
+        components = load_components().activate("I").identity
+        fingerprint = work_order_components_digest(components)
+        conditions = {"implementationSha256": {"src/example.py": "f" * 64},
+                      "components": components, "rcPolicy": {"kind": "rule", "workOrderComponentsSha256": fingerprint}}
+        check_recorded(conditions)
+        conditions["rcPolicy"]["workOrderComponentsSha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "Work-order component fingerprint"):
+            check_recorded(conditions)
+        del conditions["rcPolicy"]["workOrderComponentsSha256"]
+        check_recorded(conditions)
+
+
 class EvidenceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

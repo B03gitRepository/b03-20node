@@ -11,6 +11,27 @@ from frozen_policy import indexed_table
 
 
 class ReleaseContracts(unittest.TestCase):
+    def test_a2a_read_timeout_precedence_and_validation(self):
+        import os
+        from unittest.mock import patch
+        from packet.packet_a2a import PacketA2A
+        urls = {role: "http://127.0.0.1:1/" for role in ("agent_om", "agent_rc")}
+        with patch.dict(os.environ):
+            os.environ.pop("B03_A2A_TIMEOUT_S", None)
+            for setting, override, expected in ((None, None, 300), ("2.5", None, 2.5), ("bad", 4, 4)):
+                if setting is not None:
+                    os.environ["B03_A2A_TIMEOUT_S"] = setting
+                client = PacketA2A(None, urls, timeout=override)
+                try:
+                    self.assertEqual(client.client.timeout.read, expected)
+                    self.assertEqual(client.client.timeout.connect, 60)
+                finally:
+                    client.close()
+            for invalid in ("0", "-4", "bad", "inf", "nan"):
+                os.environ["B03_A2A_TIMEOUT_S"] = invalid
+                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                    PacketA2A(None, urls)
+
     def test_build_contains_all_original_script_pins(self):
         self.assertEqual({k for k in PROFILE["pins"] if k.startswith("scripts/")},
                          {f"scripts/script-{i:02}.json" for i in range(1,11)})

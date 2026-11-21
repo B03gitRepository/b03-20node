@@ -198,6 +198,7 @@ def one_round(args, root):
                 "behaviorProbability": d["behaviorProbability"], **c, "advantageSeconds": unweighted_advantage(c)}
                for d, c in samples]
     prepared = {"round": n, "options": options, "sampledProcess": os.getpid(),
+                "componentInputPaths": sorted(str(path) for path in registered.input_paths),
                 "parentVersion": actor.version, "parentSha256": actor.parameter_sha256,
                 "workOrder": str(work.relative_to(root)), "fixedI": str(baseline.relative_to(root)),
                 "evaluation": {"sampled": public_business(sampled), "fixedI": public_business(reference)},
@@ -261,13 +262,14 @@ def training_workspace(args):
     base = f"round-{args.round:03d}"
     outputs = [root, root / (base + "-replay.json"), root / (base + "-replay.json.lock")]
     if args.command == "step":
-        from component_config import load_components
+        from component_config import PROVIDERS, load_components
         simulator_asset = simulator_root(args.simulator).resolve(strict=True)
         _, data_asset = data_locations(args.data)
         manifest = Path(args.components).expanduser().resolve(strict=True)
         components = load_components(manifest)
-        assets.update((simulator_asset, data_asset, manifest, components.knowledge_path.resolve(strict=True)))
-        for kind in ("model", "rules", "simulator"):
+        assets.update((simulator_asset, data_asset))
+        assets.update(components.input_paths)
+        for kind in PROVIDERS:
             registration = getattr(components, kind, {})
             for path in registration.get("provenance", {}).get("assets", {}).values():
                 assets.add(Path(path).expanduser().resolve(strict=True))
@@ -282,7 +284,9 @@ def training_workspace(args):
         if (receipt["snapshot"] != base + "-replay.json" or
                 not (root / receipt["snapshot"]).resolve().is_relative_to(root)):
             raise ValueError("The restore receipt must select this workspace's committed replay")
-        # Recovery can proceed after moving the official inputs. Existing inputs still remain read-only.
+        # New receipts also remember the input paths after a component manifest moves or changes.
+        assets.update(Path(path).resolve() for path in receipt.get("componentInputPaths", ()))
+        # Resolve available manifest layers for older receipts, even when another input has moved.
         for key in ("data", "simulator", "checkpoint", "tokenizer", "components"):
             value = receipt.get("options", {}).get(key)
             if not value:
@@ -294,8 +298,13 @@ def training_workspace(args):
                 path = data_locations(path)[1]
             elif key == "simulator":
                 path = simulator_root(path).resolve(strict=True)
+            elif key == "components":
+                from component_config import read_manifest
+                read_manifest(path, inputs=assets, allow_missing=True)
             assets.add(path)
         if args.report:
+            journal_files = {root / "ppo-replay.json", root / "attempts", *root.glob("round-*.json")}
+            check_output_paths([args.report], journal_files)
             outputs.append(args.report)
     check_output_paths(outputs, assets)
     return root

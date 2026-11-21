@@ -25,6 +25,8 @@ The expected scenario root is `../b03-data/data/scenarios/sce20261010-conf02/sce
 
 The CPU default runs official script **09** with three services, fixed tool **I**, the registered solver and residual initial admission. Use `--services all` for the full scene. `--policy combined` selects a fixed conditional rule. `--protected-services` restricts writes. Run `python run.py run --help` for window, drain and scope parameters.
 
+For 20-node training, use `src/packet_training.py:run_episode` to collect and verify a work order, then apply your own optimizer. The bundled `train.py step` reference optimizer is registered for the 100-node v374 base and training scripts 04 and 05.
+
 ## Components and owners
 
 | Owner | Interface | Default | Replacement |

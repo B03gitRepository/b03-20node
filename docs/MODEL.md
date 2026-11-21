@@ -15,6 +15,10 @@ def build_model(*, checkpoint, tokenizer, device, config):
 
 The host records the delivered observation, selected tool, adapter ID and selection time. Only report probabilities, hashes or token counts that the model actually computed. `validate_model_choice(choice, policy_identity)` checks a saved `tool_choice` against `CONDITIONS.rcPolicy`.
 
+For an independent model, supply your policy version and registered symbols. The identity kind `frozen-model` selects the native pinned checkpoint, tokenizer and greedy-policy verification. Use it only for an adapter that implements that exact policy.
+
+Each `indexed_table` has `columns`, `defaults` (one per column after the identifier) and `rows`. A row is `[id, mask, *values]`. Start with the defaults. Bit 0 corresponds to the first column after the ID. In ascending bit order, replace each set bit's column with the next value in the row. For example, defaults `[true, 10, 0]` and row `[7, 5, false, 3]` decode to `[7, false, 10, 3]`.
+
 ## Frozen reference and work-order examples
 
 Use `--policy model --components config/example-model.json` with the same checkpoint, tokenizer and device as the built-in model. The `example_model:build_model` entrypoint loads the pinned `FrozenActor` and calls its original forward and greedy selection. Both adapters report the weight revision, input token count and hash, legal softmax and behavior probability. Each records its registered `adapterId`.
@@ -46,7 +50,7 @@ python run.py verify runs/int8 --strict-source --components config/int8-model.js
   --checkpoint "$B03_CHECKPOINT" --tokenizer "$B03_TOKENIZER" --simulator "$B03_SIMULATOR"
 ```
 
-The adapter checks the original weight and tokenizer digests before converting each Linear weight to qint8 in memory. Every forward records the number of converted modules actually called, full-prefill wall time and end-to-end selection wall time. In `CONDITIONS.json`, `rcPolicy.quantization` gives the engine, thread count, conversion time, layer counts and weight element counts. Embeddings, normalization and other floating-point operations retain FP32. A shared embedding/output matrix can appear in both the remaining floating-point embedding and the quantized output projection. Use the Linear element counts to compute conversion coverage. The packet clock charges measured selection time, so long CPU inference can consume the scoring window.
+The adapter checks the original weight and tokenizer digests before converting each Linear weight to qint8 in memory. Every forward records the number of converted modules actually called, full-prefill wall time and end-to-end selection wall time. In `CONDITIONS.json`, `rcPolicy.quantization` gives the engine, thread count, conversion time, layer counts and weight element counts. Embeddings, normalization and other floating-point operations retain FP32. A shared embedding/output matrix can appear in both the remaining floating-point embedding and the quantized output projection. Use the Linear element counts to compute conversion coverage. The packet clock charges measured selection time, so long CPU inference can consume the scoring window. The A2A client allows 300 seconds per read by default. Set `B03_A2A_TIMEOUT_S` to a positive finite number of seconds for slower hosts. A transport retry reuses the same message; the RPC receipt records the read timeout, attempt count and any retried error class.
 
 ## Complete inputs above the token limit
 

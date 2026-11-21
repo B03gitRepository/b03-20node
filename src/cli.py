@@ -134,11 +134,8 @@ def main(argv=None, *, on_policy_ready=None):
     chooser = DecisionPolicy(args.policy, args.checkpoint, args.tokenizer, args.device, args.initial_admission,
                              components=components) if args.mode == "workorder" else None
     if chooser is not None:
-        from component_config import digest
-        runtime_components = components.identity
-        chooser.identity["workOrderComponentsSha256"] = digest({
-            k:runtime_components[k] for k in ("catalog", "model", "rules", "providerModuleSha256")
-        })
+        from component_config import work_order_components_digest
+        chooser.identity["workOrderComponentsSha256"] = work_order_components_digest(components.identity)
         chooser.record_component_io = args.record_component_io
         if on_policy_ready is not None:
             on_policy_ready(chooser)

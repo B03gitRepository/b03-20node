@@ -152,6 +152,51 @@ class ModelRuntime(unittest.TestCase):
                 training_workspace(SimpleNamespace(**dict(kwargs, checkpoint=collision), workspace=root))
             self.assertFalse((root/"session.lock").exists())
 
+    def test_component_assets_are_read_only_for_step_and_restore(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            engine, work = root / "resnet_py", root / "work"
+            (engine / "src/resnet").mkdir(parents=True)
+            work.mkdir()
+            for name in ("weights", "tokenizer", "official", "provider"):
+                (root / name).mkdir()
+            parent, manifest = root / "provider.json", root / "components.json"
+            knowledge = root / "edition.json"
+            knowledge.write_text("{}", encoding="utf8")
+            attachment = root / "provider/table.txt"
+            attachment.write_bytes(b"reference")
+            parent.write_text(json.dumps({"extends": str(ROOT / "config/packet-ppo.json"),
+                "knowledge": {"source": knowledge.name, "provenance": {"assets": {
+                    "lookup": "provider", "table": "provider/table.txt"}}}}), encoding="utf8")
+            manifest.write_text(json.dumps({"extends": parent.name}), encoding="utf8")
+            shared = ["--round", "1", "--checkpoint", str(root / "weights"), "--tokenizer", str(root / "tokenizer")]
+            args = ["--simulator", str(engine), "--data", str(root / "official"), "--components", str(manifest),
+                    "--script", "04", "--services", "example", "--start", "0", "--end", "4", "--drain", "0"]
+            receipt_path = work / "round-001.json"
+            receipt = {"snapshot": "round-001-replay.json", "options": {"components": str(manifest)}}
+            receipt_path.write_text(json.dumps(receipt), encoding="utf8")
+            fresh = root / "provider/output/result.json"
+            for dest in (fresh, attachment, parent, knowledge):
+                for route in (["step", "--workspace", str(dest), *args],
+                              ["restore", "--workspace", str(work), "--report", str(dest)]):
+                    with self.subTest(route=route[0], dest=dest), patch.object(
+                            sys, "argv", ["train.py", *route, *shared]), self.assertRaisesRegex(ValueError, "read-only"):
+                        training_main()
+            # A legacy receipt can still resolve sibling assets if the knowledge source has moved.
+            knowledge.rename(root / "moved-edition.json")
+            restore = ["train.py", "restore", "--workspace", str(work), "--report", str(fresh), *shared]
+            with patch.object(sys, "argv", restore), self.assertRaisesRegex(ValueError, "read-only"):
+                training_main()
+            # New receipts retain the input set even if the original manifest is gone.
+            receipt["componentInputPaths"] = [str(attachment.parent)]
+            receipt_path.write_text(json.dumps(receipt), encoding="utf8")
+            manifest.rename(root / "moved-registration.json")
+            with patch.object(sys, "argv", restore), self.assertRaisesRegex(ValueError, "read-only"):
+                training_main()
+            self.assertEqual(attachment.read_bytes(), b"reference")
+            self.assertFalse(fresh.parent.exists())
+            self.assertFalse(list(work.glob("*.lock")))
+
     def test_restore_report_cannot_write_to_a_registered_input(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()

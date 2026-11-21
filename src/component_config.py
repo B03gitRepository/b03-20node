@@ -24,6 +24,11 @@ def digest(value):
                                      separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
+def work_order_components_digest(components):
+    fields = ("catalog", "model", "rules", "providerModuleSha256")
+    return digest({key: components[key] for key in fields})
+
+
 def merged(base, patch):
     result = deepcopy(base)
     for key, value in patch.items():
@@ -34,8 +39,12 @@ def merged(base, patch):
     return result
 
 
-def read_manifest(path, ancestors=()):
-    path = path.resolve(strict=True)
+def read_manifest(path, ancestors=(), *, inputs=None, allow_missing=False):
+    path = path.resolve(strict=not allow_missing)
+    if inputs is not None:
+        inputs.add(path)
+    if allow_missing and not path.exists():
+        return {}
     if path in ancestors:
         raise ValueError("Component manifest inheritance cycle")
     value = json.loads(path.read_bytes())
@@ -45,7 +54,10 @@ def read_manifest(path, ancestors=()):
     # Resolve the knowledge path against the manifest that declares it.
     knowledge = value.get("knowledge", {})
     if isinstance(knowledge, dict) and "source" in knowledge:
-        knowledge["source"] = str((path.parent / knowledge["source"]).resolve(strict=True))
+        source = (path.parent / knowledge["source"]).resolve(strict=not allow_missing)
+        knowledge["source"] = str(source)
+        if inputs is not None:
+            inputs.add(source)
     # Each asset is relative to the manifest that introduced it, including inherited entries.
     for kind in PROVIDERS:
         part = value.get(kind, {})
@@ -59,7 +71,12 @@ def read_manifest(path, ancestors=()):
             ):
                 raise ValueError("provenance.assets maps nonempty logical names to file or directory paths")
             registration["assets"] = {k: str((path.parent / v).resolve()) for k, v in assets.items()}
-    return merged(read_manifest(path.parent / parent, (*ancestors, path)), value) if parent else value
+            if inputs is not None:
+                inputs.update(map(Path, registration["assets"].values()))
+    if parent:
+        base = read_manifest(path.parent / parent, (*ancestors, path), inputs=inputs, allow_missing=allow_missing)
+        return merged(base, value)
+    return value
 
 
 def tokens(value, name):
@@ -72,7 +89,8 @@ def tokens(value, name):
 
 class ComponentSet:
     def __init__(self, path):
-        value = read_manifest(path)
+        self.input_paths = set()
+        value = read_manifest(path, inputs=self.input_paths)
         if value.get("schema") != SCHEMA:
             raise ValueError("Unsupported component interface schema")
         self.catalog = value["catalog"]

@@ -9,6 +9,8 @@ import asyncio
 import base64
 import hashlib
 import json
+import math
+import os
 import socket
 import threading
 import time
@@ -133,10 +135,17 @@ def _app(role, url, handle):
 class PacketA2A:
     """Own two local listeners, or connect to already configured role endpoints."""
 
-    def __init__(self, handle, urls=None):
+    def __init__(self, handle, urls=None, *, timeout=None):
         import httpx
 
-        self.client = httpx.Client(trust_env=False, timeout=60)
+        value = os.environ.get("B03_A2A_TIMEOUT_S", "300") if timeout is None else timeout
+        try:
+            read_timeout = float(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("A2A read timeout must be a positive finite number of seconds") from exc
+        if isinstance(value, bool) or not math.isfinite(read_timeout) or read_timeout <= 0:
+            raise ValueError("A2A read timeout must be a positive finite number of seconds")
+        self.client = httpx.Client(trust_env=False, timeout=httpx.Timeout(60.0, read=read_timeout))
         self.handles = []
         self.sdk = version("a2a-sdk")
         self.urls = dict(urls or {})
@@ -177,20 +186,24 @@ class PacketA2A:
         request = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
         import httpx
         raw = canonical(request)
+        retry_errors = []
         for attempt in (1, 2):
             try:
                 response = self.client.post(url, content=raw,
                                             headers={"Content-Type": "application/json", "A2A-Version": "1.0"})
                 break
-            except httpx.TransportError:
+            except httpx.TransportError as exc:
                 if attempt == 2:
                     raise
+                retry_errors.append(type(exc).__name__)
         response.raise_for_status()
         obj = response.json()
         if obj.get("jsonrpc") != "2.0" or obj.get("id") != request_id or "error" in obj:
             raise RuntimeError(f"A2A {method} failed: {obj.get('error', 'response binding')}")
         return obj["result"], {"method": method, "http_status": response.status_code, "rpc_id": request_id,
-                              "attempts": attempt, "request_bytes": len(raw), "response_bytes": len(response.content)}
+                              "attempts": attempt, "read_timeout_s": self.client.timeout.read,
+                              "retry_errors": retry_errors, "request_bytes": len(raw),
+                              "response_bytes": len(response.content)}
 
     def exchange(self, kind, work_id, snapshot_id, payload, *, parent_message_id=None):
         sender, receiver = ROUTES[kind]

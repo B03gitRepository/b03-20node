@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import re
 
-from component_config import digest
+from component_config import digest, work_order_components_digest
 from provenance import SCHEMA, active_kinds, changed, model_assets, revision, verify_provenance
 from scene import DEPENDENCY, PROFILE, ROOT, sha256, simulator_root, verify_engine, write_json
 
@@ -110,6 +110,10 @@ def check_recorded(conditions):
         expected = digest({k: v for k, v in components.items() if k != "manifestSha256"})
         if components.get("manifestSha256") != expected:
             raise ValueError("Archived component manifest fingerprint differs")
+    policy = conditions.get("rcPolicy") or {}
+    if "workOrderComponentsSha256" in policy:
+        if components is None or policy["workOrderComponentsSha256"] != work_order_components_digest(components):
+            raise ValueError("Work-order component fingerprint differs from the archived components")
     native_receipt(conditions)
     if proof is None:
         return
