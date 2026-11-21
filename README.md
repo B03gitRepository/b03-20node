@@ -1,66 +1,60 @@
-# B03 通信网络资源管控 · 20 节点
+# B03 packet network control · 20 nodes
 
-在分组仿真中通过 A2A 运行 OM 运维和 RC 资源管控。OM 查询已抵达的报告并限定可写业务，RC 选择工具并联合求解，节点执行后由 OM 逐跳读回。固定规则与冻结模型共用这套工单流程。固定规则直接选用指定工具，全程可在 CPU 运行。
+OM reads delivered network and demand reports, opens a work order and grants write authority. RC selects a legal tool and asks the scheduling rule for a joint configuration. The device adapter releases and installs configurations through the packet network. OM signs off using per-hop readback. A fixed rule and a frozen model use this same workflow.
 
-## 准备赛事数据
+## Install and run
 
-出于对赛事数据来源方的保密需要，本仓库仅公开 B03 源码、运行配置、测试和使用说明。场景设定、网络拓扑、业务需求及事件脚本由合作方从已持有的赛事数据包在本地加载。
-
-请在仓库的**同级目录**创建 `b03-data/`，将赛事包解压到里面，保留包内层级。20 节点与 100 节点仓库可以共用这一份数据。以下命令在当前源码仓库根目录执行，将示例中的归档文件路径替换成自己的位置。
+Use Python 3.12 and the pinned **resnet_py 1.1.0** packet engine supplied by the simulator provider. The official topology, service requests and event scripts are distributed separately to protect the data provider’s confidential scenario definitions. Extract the competition package next to this checkout and retain its directory structure. The two network scales can use the same data directory.
 
 ```bash
 mkdir -p ../b03-data
-tar -xf /path/to/official-dataset.tar.gz -C ../b03-data
+tar -xf /path/to/competition-data.tar.gz -C ../b03-data
 export B03_DATA="$(cd ../b03-data && pwd)"
-```
-
-本仓库预期的目录结构如下。
-
-```text
-../b03-data/data/scenarios/sce20261010-conf02/sce01/
-    net-topo.json
-    bg-service.json
-    scripts/
-        script-09.json
-        ...
-```
-
-若解压工具另加了一层目录，让 `B03_DATA` 指向直接包含 `data/` 的那一层，或直接指向上述含 `net-topo.json` 的场景目录。Windows PowerShell 可用 `$env:B03_DATA = (Resolve-Path ..\b03-data).Path`。程序也支持用 `--data` 指定已有赛事归档或场景目录。
-
-## 运行固定规则
-
-准备 Python 3.12，并将 `B03_SIMULATOR` 指向本地只读分组引擎 `resnet_py`。从仓库根目录执行以下命令。
-
-```bash
+export B03_SIMULATOR=/path/to/resnet_py
 python3.12 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements.txt
-export B03_SIMULATOR=/path/to/resnet_py
-python run.py run --output runs/first
-python run.py verify runs/first --report runs/first-check.json
+python run.py run --output runs/default-i
+python run.py verify runs/default-i --report runs/default-check.json
 ```
 
-默认使用 `--mode workorder --policy I`。使用 `--policy combined` 启用条件组合规则，`--services all` 处理完整需求名单，`--script` 选择官方脚本。配置切换和读回都经过设备侧。每次运行使用新的输出目录，可选参数见 `python run.py run --help`。
+The expected scenario root is `../b03-data/data/scenarios/sce20261010-conf02/sce01/` with `net-topo.json`, `bg-service.json` and `scripts/`. `--data` can also point directly to that directory or the official archive. The engine can remain read-only. Every run requires a fresh output directory.
 
-## 接入本地模型
+The CPU default runs official script **09** with three services, fixed tool **I**, the registered solver and residual initial admission. Use `--services all` for the full scene. `--policy combined` selects a fixed conditional rule. `--protected-services` restricts writes. Run `python run.py run --help` for window, drain and scope parameters.
 
-20 节点的冻结接口读取 v18 Hugging Face Safetensors 目录。模型在当前获准的动作中选工具，具体配置仍由规则求解，并沿用相同的设备校验与读回流程。使用模型模式时需另备本地权重。
+## Components and owners
+
+| Owner | Interface | Default | Replacement |
+|---|---|---|---|
+| Model maintainer | `choose(observation)` returns a legal tool and policy version | Frozen v18 with A–C mapping | [Model contract and factory](docs/MODEL.md) |
+| Scheduling algorithm maintainer | `enumerate_actions(snapshot, authority, config, history=None)` and `solve_action(action, bound, context=None)` | A–L joint routing tools | [Rule contract and factory](docs/RULES.md) |
+| Technical knowledge maintainer | Local read-only query by ID or topic | Technical edition 1.0.0 | [Knowledge schema and switch](docs/KNOWLEDGE.md) |
+| Integration maintainer | Component schema, action catalog, packet work-order verifier | `b03.components.v1` / `b03.tools.v1` | [Default component manifest](config/components.json) |
+
+An optional `--components FILE` selects a manifest. The examples extend the default and replace one component. A provider factory may live in this source tree or an installed Python module. Record its release and pin its dependencies. Register new model-visible tool IDs in a new catalog version and update model and rule mappings together.
+
+## Reproduce a replacement
+
+The model path uses a separate local checkpoint. Install the model environment and set the paths below. The example model factory runs the pinned frozen parameters. The example rule implements an alternative allocation order for I.
 
 ```bash
 python -m pip install -r requirements-model.txt
-python run.py run --policy model --device cuda --checkpoint /path/to/v18-hf --output runs/model
-python run.py verify runs/model --report runs/model-check.json
+export B03_CHECKPOINT=/path/to/v18-hf
+python run.py run --policy model --device cuda --output runs/default-model
+python run.py run --components config/example-model.json --policy model --device cuda --record-component-io --output runs/model-plugin
+python run.py verify runs/model-plugin --report runs/model-plugin-check.json
+python run.py examples runs/model-plugin --components config/example-model.json --output runs/model-example.json
+python run.py run --components config/example-rules.json --policy I --record-component-io --output runs/rule-plugin
+python run.py verify runs/rule-plugin --report runs/rule-plugin-check.json
+python run.py examples runs/rule-plugin --components config/example-rules.json --output runs/rule-example.json
+python run.py knowledge --id K045
+python run.py knowledge --components config/knowledge-v2.json --topic clock
 ```
 
-## 代码导航
+`examples` exports the actual delivered model observation, chosen tool and policy version, the solver’s authorized snapshot and returned proposal, and a released knowledge entry. Full examples include scenario-derived records and belong with the licensed data. [Measured component examples and regression](docs/COMPONENT_VALIDATION.md) gives the public results and selected fields from these runs.
 
-| 入口 | 用途 |
-|---|---|
-| [run.py](run.py) · [src/cli.py](src/cli.py) | 运行、参数与结果核验 |
-| [src/scene.py](src/scene.py) · [config/profile.json](config/profile.json) | 定位本地数据、校验文件、选择运行窗口 |
-| [packet_roles.py](src/packet/packet_roles.py) · [packet_a2a.py](src/packet/packet_a2a.py) | OM 查询、授权、RC 提交与读回签收 |
-| [strong_tools.py](src/rules/strong_tools.py) · [opening.py](src/opening.py) · [frozen_policy.py](src/frozen_policy.py) | 联合分配、剩余容量补查与模型选工具 |
-| [packet_device.py](src/packet/packet_device.py) · [packet_device_readback.py](src/packet/packet_device_readback.py) | 指令下发、节点执行、超时重试与读回 |
-| [packet_measure.py](src/packet/packet_measure.py) · [verify_packet.py](src/packet/verify_packet.py) | 业务保障、控制时钟、分组计量与证据核验 |
+## Results and code
 
-[本地资源和输出说明](docs/ASSETS.md) · [运行核验](docs/VALIDATION.md)
+`CONDITIONS.json` records engine and input digests, the permitted workload and the resolved component identities. `b03.jsonl` contains work orders and readback, and `business-intervals.jsonl` records service loss intervals. `SUMMARY.json` reports U (unmet service-seconds), W (priority-weighted unmet service-seconds), packet counts and timing. The verification report includes actual model calls, selected tools, device activations, verified device queries and measured RC and A2A time.
+
+[OM, RC and authorization](src/packet/packet_roles.py) · [A2A transport](src/packet/packet_a2a.py) · [Device execution](src/packet/packet_device.py) · [Readback](src/packet/packet_device_readback.py) · [Packet and service accounting](src/packet/packet_measure.py) · [Engine and data](docs/ASSETS.md) · [Historical validation](docs/VALIDATION.md)
