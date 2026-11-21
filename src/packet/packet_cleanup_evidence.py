@@ -77,9 +77,16 @@ def cleanup_budgets(acts, groups, conditions, probes):
                          and original["node_id"] == row["node_id"] and row["protected_services"] == [sid]
                          and row["protected_nodes"] == [row["node_id"]] and row["protected_links"] == old["link_path"]
                          and original["issued_at_ns"] + controls["command_validity_ns"] < now, "invalid expired write scope")
-                _require(any(r["operation"] == "query" and original["issued_at_ns"] < r["time_ns"] <= now
-                             and r["plan_id"] == step["plan_id"] for r in events["native_command_timeout"]),
-                         "missing timed-out read-only reconciliation")
+                sent_queries = {q["command_id"] for q in events["device_command"]
+                                if q["op"] == "query" and (q["plan_id"], q["node_id"], q["service_id"], q["epoch"]) ==
+                                (step["plan_id"], row["node_id"], sid, row["epoch"])
+                                and original["issued_at_ns"] <= q["issued_at_ns"] < now}
+                timed_out = {r["command_id"] for r in events["native_command_timeout"]
+                             if r["operation"] == "query" and r["command_id"] in sent_queries
+                             and original["issued_at_ns"] < r["time_ns"] <= now and r["plan_id"] == step["plan_id"]}
+                # Earlier receipts omitted the query ID on the hold event. Resolve those from native timeouts.
+                _require(timed_out and ("timed_out_query_id" not in row or row["timed_out_query_id"] in timed_out),
+                         "missing timed-out read-only reconciliation for the expired cleanup")
                 ready = False
                 pending_query.clear()
             elif event == "cleanup_recovery_probe":

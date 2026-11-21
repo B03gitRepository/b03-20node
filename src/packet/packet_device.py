@@ -58,6 +58,14 @@ class WorkLoop(ControlLoop):
             # Native plans are numbered per service; all their wire IDs carry this joint work ID.
             row = dict(row, work_id=self.work["work_id"], plan_id=self.native_plan_id)
         self.native_log(row)
+        if (self.defer_unreachable_cleanup and row["event"] == "command_timeout" and row.get("operation") == "query"
+                and self.transaction and self.pending):
+            query, original = self.pending["command"], self.transaction.get("uncertain_command")
+            if (original and original["action"]["op"] == "cleanup" and query["command_id"] == row["command_id"]
+                    and query["action"]["op"] == "query" and query["target_node_id"] == original["target_node_id"]
+                    and query["action"]["service_id"] == original["action"]["service_id"]
+                    and query["action"]["epoch"] == original["action"]["epoch"]):
+                self.transaction["cleanup_query_timeout"] = (original["command_id"], query["command_id"])
         if row["event"] in {"transaction", "command_timeout"}:
             self._event("native_" + row["event"], row["time_ns"], **{
                 key: value for key, value in row.items() if key not in {"event", "time_ns", "work_id"}
@@ -324,7 +332,9 @@ class WorkLoop(ControlLoop):
                 or not tr["source_confirmed"] or now < tr["deadline_ns"]):
             return
         original = tr["uncertain_command"]
-        if (original["action"]["op"] != "cleanup" or tr["old"] not in self.retained
+        timed_out = tr.get("cleanup_query_timeout")
+        if (not timed_out or timed_out[0] != original["command_id"]
+                or original["action"]["op"] != "cleanup" or tr["old"] not in self.retained
                 or now <= original["issued_at_ns"] + original["validity_ns"]):
             return
         work = self.work
@@ -335,10 +345,11 @@ class WorkLoop(ControlLoop):
         # writes are serialized by the existing per-node version check; no write is in flight here.
         wid, node = work["work_id"], original["target_node_id"]
         links = list(tr["decision"]["link_path"])
+        del tr["cleanup_query_timeout"]  # A resumed attempt must earn a new timeout of its own.
         self.deferred_cleanups[wid] = {"work": work, "transaction": tr, "plan_id": self.native_plan_id,
                                        "node": node, "since": now, "services": [sid], "links": links}
         self._event("cleanup_deferred", now, plan_id=self.native_plan_id, service_id=sid,
-                    epoch=tr["epoch"], node_id=node, expired_command_id=original["command_id"],
+                    epoch=tr["epoch"], node_id=node, expired_command_id=original["command_id"], timed_out_query_id=timed_out[1],
                     protected_nodes=[node], protected_links=links, protected_services=[sid], retained_wire_bps=self.budgets())
         self.work = self.transaction = self.native_plan_id = None
 
