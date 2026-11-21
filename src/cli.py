@@ -36,6 +36,8 @@ def main(argv=None, *, on_policy_ready=None):
     run.add_argument("--start", type=int, default=PROFILE["start"])
     run.add_argument("--end", type=int, default=PROFILE["end"])
     run.add_argument("--drain", type=int, default=PROFILE["drain"])
+    run.add_argument("--defer-unreachable-cleanup", action="store_true",
+                     help="Keep unresolved terminal cleanup reservations while disjoint work orders proceed")
     run.add_argument("--drop-install-ack", action="store_true", help="Test one lost native install receipt")
     run.add_argument("--output", type=Path, required=True)
     check = actions.add_parser("verify", help="Validate causal evidence, native device writes, QoS, and packet accounts")
@@ -91,6 +93,8 @@ def main(argv=None, *, on_policy_ready=None):
         else:
             print(json.dumps(result, ensure_ascii=False, indent=2))
         return
+    if args.defer_unreachable_cleanup and args.mode != "workorder":
+        run.error("--defer-unreachable-cleanup is a work-order device recovery option")
     components = load_components(args.components)
     if args.policy not in (*components.symbols, "model", "combined"):
         run.error("The requested policy is absent from the configured action catalog")
@@ -166,6 +170,9 @@ def main(argv=None, *, on_policy_ready=None):
                 "authority": {"discovery":"all_delivered_registered" if discover_writes else "explicit_roster", "allowedServiceIds": sorted(writable), "protectedServiceIds":sorted(protected), "effectiveWriteIds":sorted(writable - protected), "healthyMigration": False, "preemption": False,
                               "rateScale": config["rate_scale"], "scope": "B03 work orders; package/single use native stock review authority"},
                 "coldStart": args.start != 0, "match": "same input bytes, reporting, start/end/drain, clocks, eligible IDs, full demand, physical queues and seed"}
+    if args.mode == "workorder":
+        identity["deviceRecovery"] = {"contractVersion": "b03.deferred-cleanup.v1",
+                                      "deferUnreachableCleanup": args.defer_unreachable_cleanup}
     if activity:
         identity["activityOverlay"] = activity
     from integrity import source_identity
@@ -214,7 +221,7 @@ def main(argv=None, *, on_policy_ready=None):
             from packet_device import install
             roles = PacketRoles(None if discover_writes else writable, emit, chooser=chooser, protected_ids=protected, control_headroom_fraction=config["control"]["control_headroom_fraction"])
             stack.callback(roles.close)
-            workloop = install(sim, roles, emit)
+            workloop = install(sim, roles, emit, defer_unreachable_cleanup=args.defer_unreachable_cleanup)
         started = time.perf_counter()
         sim.advance(sim.end_ns)
         boundary = sim.summary()
