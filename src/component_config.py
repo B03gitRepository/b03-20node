@@ -13,6 +13,9 @@ from scene import ROOT
 SCHEMA = "b03.components.v1"
 BUILTIN_CATALOG = tuple("ABCDEFGHIJKL")
 DEFAULT = ROOT / "config/components.json"
+PROVIDERS = ("model", "rules", "simulator", "knowledge")
+DEFAULT_SIMULATOR = {"id": "b03.resnet", "version": "1.1.0",
+                     "contractVersion": "b03.packet-simulator.v1", "entrypoint": "builtin"}
 FACTORY = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*:[A-Za-z_]\w*")
 
 
@@ -43,6 +46,19 @@ def read_manifest(path, ancestors=()):
     knowledge = value.get("knowledge", {})
     if isinstance(knowledge, dict) and "source" in knowledge:
         knowledge["source"] = str((path.parent / knowledge["source"]).resolve(strict=True))
+    # Each asset is relative to the manifest that introduced it, including inherited entries.
+    for kind in PROVIDERS:
+        part = value.get(kind, {})
+        registration = part.get("provenance", {}) if isinstance(part, dict) else {}
+        if not isinstance(registration, dict):
+            raise ValueError("Expected a provenance object for " + kind)
+        if "assets" in registration:
+            assets = registration["assets"]
+            if not isinstance(assets, dict) or any(
+                not isinstance(k, str) or not k or not isinstance(v, str) or not v for k, v in assets.items()
+            ):
+                raise ValueError("provenance.assets maps nonempty logical names to file or directory paths")
+            registration["assets"] = {k: str((path.parent / v).resolve()) for k, v in assets.items()}
     return merged(read_manifest(path.parent / parent, (*ancestors, path)), value) if parent else value
 
 
@@ -66,15 +82,30 @@ class ComponentSet:
             raise ValueError("Missing catalog version")
         if version == "b03.tools.v1" and tuple(self.symbols) != BUILTIN_CATALOG:
             raise ValueError("The published b03.tools.v1 mapping is immutable")
+        self.simulator = value.setdefault("simulator", dict(DEFAULT_SIMULATOR))
         self.model, self.rules, self.knowledge = (value[k] for k in ("model", "rules", "knowledge"))
-        for part in (self.model, self.rules, self.knowledge):
+        self.knowledge.setdefault("entrypoint", "builtin")
+        for part in (self.model, self.rules, self.simulator, self.knowledge):
             if not all(isinstance(part.get(k), str) and part[k].strip() for k in ("id", "version")):
                 raise ValueError("Each component requires an ID and a release version")
         for part in (self.model, self.rules):
             if part.get("catalogVersion") != version:
                 raise ValueError("Component and action catalog versions differ")
-            if part["entrypoint"] != "builtin" and not FACTORY.fullmatch(part["entrypoint"]):
+        for part in (self.model, self.rules, self.simulator, self.knowledge):
+            if not isinstance(part.get("entrypoint"), str) or (part["entrypoint"] != "builtin" and not FACTORY.fullmatch(part["entrypoint"])):
                 raise ValueError("Expected a module:factory entry point")
+            registration = part.get("provenance", {})
+            unknown = registration.keys() - {"distribution", "distributions", "localModules", "assets"}
+            if unknown:
+                raise ValueError("Unknown provenance fields: " + ", ".join(sorted(unknown)))
+            if "distribution" in registration and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", str(registration["distribution"])):
+                raise ValueError("provenance.distribution must be an installed distribution name")
+            for field in ("distributions", "localModules"):
+                items = registration.get(field, [])
+                if not isinstance(items, list) or any(not isinstance(item, str) or not item.strip() for item in items):
+                    raise ValueError("Expected a string list for provenance." + field)
+                if len(set(items)) != len(items):
+                    raise ValueError("Duplicate entry in provenance." + field)
         mapping = tokens(self.model["symbols"], "model mapping")
         if any(i not in self.symbols for i in mapping):
             raise ValueError("The model maps a symbol outside the action catalog")
@@ -83,6 +114,16 @@ class ComponentSet:
         self.knowledge_path = Path(self.knowledge["source"])
         self._value = value
         self._identity = None
+        self._active = PROVIDERS
+
+    def activate(self, policy):
+        """Only providers reachable in this run need an installed entry point."""
+        from provenance import active_kinds
+        active = active_kinds(policy, self._value)
+        if self._active != active:
+            self._active = active
+            self._identity = None
+        return self
 
     @property
     def identity(self):
@@ -92,23 +133,24 @@ class ComponentSet:
         public["knowledge"]["source"] = self.knowledge_path.name
         public["knowledge"]["sha256"] = hashlib.sha256(self.knowledge_path.read_bytes()).hexdigest()
         pins = {}
-        from importlib.util import find_spec
-        for kind in ("model", "rules"):
+        from provenance import module_file
+        for kind in PROVIDERS:
+            registration = public[kind].get("provenance", {})
+            if "assets" in registration:
+                registration["assets"] = {k: Path(v).name for k, v in registration["assets"].items()}
+        for kind in self._active:
             entry = getattr(self, kind)["entrypoint"]
             if entry == "builtin":
                 continue
             module, _ = entry.split(":")
-            spec = find_spec(module)
-            if spec is None or not spec.origin or not Path(spec.origin).is_file():
-                raise ValueError("Provider has no reproducible module file: " + module)
-            pins[kind] = hashlib.sha256(Path(spec.origin).read_bytes()).hexdigest()
+            pins[kind] = hashlib.sha256(module_file(module).read_bytes()).hexdigest()
         self._identity = {**public, "providerModuleSha256":pins}
         self._identity["manifestSha256"] = digest(self._identity)
         return deepcopy(self._identity)
 
     def factory(self, kind):
-        if kind not in ("model", "rules"):
-            raise ValueError("Unknown provider")
+        if kind not in self._active:
+            raise ValueError("Unselected provider: " + kind)
         entrypoint = getattr(self, kind)["entrypoint"]
         if entrypoint == "builtin":
             return None

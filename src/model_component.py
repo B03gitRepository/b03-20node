@@ -167,6 +167,30 @@ def validate_model_choice(choice, policy_identity):
         if (type(logp) not in (float, int) or "behaviorProbability" not in choice
                 or not math.isclose(logp, math.log(choice["behaviorProbability"]), rel_tol=1e-6, abs_tol=1e-6)):
             raise ValueError("Old log probability differs from the selected behavior probability")
+    if choice.get("encoding") == "b03.packet.node-scope-ranges.v1":
+        from packet_input import _sha, decode_observation, encode_observation
+        from frozen_policy import canonical
+        packed = encode_observation(obs)
+        if (choice.get("losslessVerified") is not True
+                or canonical(decode_observation(packed)) != canonical(obs)
+                or choice.get("rawObservationSha256") != _sha(obs)
+                or choice.get("actualObservationSha256") != _sha(packed)
+                or choice.get("actualInputSha256") != choice.get("inputSha256")
+                or choice.get("deliveredTokens") != choice.get("inputTokens")
+                or any(type(choice.get(k)) is not int for k in ("originalTokens", "deliveredTokens", "tokenLimit"))
+                or not 0 < choice["deliveredTokens"] <= choice["tokenLimit"] < choice["originalTokens"]
+                or any(not re.fullmatch(r"[a-f0-9]{64}", str(choice.get(k, ""))) for k in
+                       ("rawInputSha256", "actualInputSha256", "rawTokenIdsSha256", "actualTokenIdsSha256"))):
+            raise ValueError("Invalid reversible model input evidence")
+    if policy_identity.get("precision") == "dynamic-int8-linear":
+        q = policy_identity.get("quantization", {})
+        n = choice.get("executedInt8LinearModules")
+        wall = choice.get("inferenceWallNs")
+        if (type(n) is not int or n <= 0 or n != q.get("quantizedLinearModules")
+                or n != q.get("linearModules") or q.get("quantizedDtype") != "qint8"
+                or type(wall) is not int or wall <= 0
+                or ("selectionWallNs" in choice and wall > choice["selectionWallNs"])):
+            raise ValueError("Incomplete measured dynamic INT8 execution")
     if native:
         required = {"inputTokens", "inputSha256", "parameterVersion", "legalProbabilities", "behaviorProbability"}
         if not required <= choice.keys() or "version" not in policy_identity:
