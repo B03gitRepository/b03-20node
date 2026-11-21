@@ -4,9 +4,11 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from copy import deepcopy
 from pathlib import Path
 import time
 
+from model_component import load_model, validate_model_choice
 from scene import PROFILE, ROOT
 
 SCHEMA = "b03.packet.rc-choice.v1"
@@ -168,32 +170,92 @@ class FrozenActor:
 
 
 class DecisionPolicy:
-    def __init__(self, name, checkpoint=None, tokenizer=None, device="cuda", initial_admission="residual"):
+    def __init__(self, name, checkpoint=None, tokenizer=None, device="cuda", initial_admission="residual",
+                 components=None):
         self.opening_checked = False
         self.initial_admission = initial_admission
-        self.name=name
-        self.context={}
-        self.actor=None
-        if name=="model":
-            if not checkpoint:
-                raise ValueError("--policy model requires --checkpoint DIRECTORY")
-            self.actor=FrozenActor(checkpoint,tokenizer,device)
-        self.identity=dict(self.actor.identity if self.actor else {"kind":"rule","method":name},initialAdmission=initial_admission)
+        self.name = name
+        self.context = {}
+        self.components = components
+        self.record_component_io = False
+        self.actor = None
+        self._last_frozen_version = None
+        identity = {"kind": "rule", "method": name}
+        if name == "model":
+            if components is None:
+                if not checkpoint:
+                    raise ValueError("--policy model requires --checkpoint DIRECTORY")
+                self.actor = FrozenActor(checkpoint, tokenizer, device)
+                identity = self.actor.identity
+            else:
+                self.actor, identity = load_model(components, checkpoint, tokenizer, device, FrozenActor)
+        self.identity = dict(identity, initialAdmission=initial_admission)
+
+    def _model_choice(self, by_id, state, snapshot, ledger, diagnosis, config):
+        symbols = self.identity.get("symbols")
+        if symbols is None:
+            symbols = self.actor.symbols
+        if self.components is not None and by_id.keys() - set(self.components.symbols):
+            raise ValueError("The enumerated actions contain an unregistered catalog tool")
+        legal = [by_id[s] for s in symbols if s in by_id]
+        if not legal:
+            raise ValueError("The model has no legal tool under the current authorization")
+        observation = policy_observation(state, snapshot, ledger, diagnosis, config, legal)
+        current_version = getattr(self.actor, "version", None)
+        result = self.actor.choose(deepcopy(observation))
+        if not isinstance(result, (tuple, list)) or len(result) != 2 or not isinstance(result[1], dict):
+            raise ValueError("Model choose must return (tool_id, details)")
+        selected, details = result
+        if not isinstance(selected, str) or selected not in observation["legalActions"]:
+            raise ValueError("Model selected a tool outside its delivered legal actions")
+        reserved = {"method", "modelCalled", "selected", "selectionWallNs", "adapterId", "adapterVersion",
+                    "catalogVersion", "entrypoint", "mode", "modelIO", "legalActions", "actionCatalog"}
+        conflict = reserved.intersection(details)
+        if conflict:
+            raise ValueError(f"Model details contain runner-owned fields: {sorted(conflict)}")
+        if "observation" in details and canonical(details["observation"]) != canonical(observation):
+            raise ValueError("Model details contain a different observation from the delivered input")
+        diagnostics = {key: value for key, value in details.items() if key != "observation"}
+        if not all(isinstance(key, str) for key in diagnostics):
+            raise ValueError("Model diagnostic keys must be strings")
+        try:
+            receipt = json.loads(canonical(diagnostics))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("Model diagnostics must be finite JSON values") from exc
+        receipt.update(method=self.name, modelCalled=True, selected=selected, observation=observation)
+        for key in ("adapterId", "adapterVersion", "catalogVersion"):
+            if key in self.identity:
+                receipt[key] = self.identity[key]
+        if "policyVersion" not in receipt and "parameterVersion" in receipt:
+            receipt["policyVersion"] = receipt["parameterVersion"]
+        validate_model_choice(receipt, self.identity)
+        version = receipt["policyVersion"]
+        if current_version is not None and (type(version) is not type(current_version) or version != current_version):
+            raise ValueError("Model choice version differs from the actor at selection")
+        if self.identity.get("mode", "frozen") == "frozen":
+            if self._last_frozen_version is not None and version != self._last_frozen_version:
+                raise ValueError("Frozen policy version changed during the run")
+            self._last_frozen_version = version
+        return selected, receipt
 
     def select(self, actions, state, snapshot, ledger, diagnosis, config):
         at = time.perf_counter_ns()
-        details={}
-        by_id={action["id"]:action for action in actions}
-        if self.actor:
-            legal=[by_id[i] for i in self.actor.symbols if i in by_id]
-            observation=policy_observation(state,snapshot,ledger,diagnosis,config,legal)
-            choice,details=self.actor.choose(observation)
-        elif self.name=="combined":
-            affected=sum(d["authorized"] for d in diagnosis["services"].values())
-            choice="D" if affected<=2 else "K" if affected<=8 else "J"
+        by_id = {}
+        for action in actions:
+            symbol = action.get("id") if isinstance(action, dict) else None
+            if not isinstance(symbol, str) or not symbol.strip() or symbol in by_id:
+                raise ValueError("Enumerated actions require distinct tool IDs")
+            by_id[symbol] = action
+        if self.actor is not None:
+            choice, receipt = self._model_choice(by_id, state, snapshot, ledger, diagnosis, config)
         else:
-            choice=self.name
-        if choice not in by_id:
-            raise ValueError(f"Requested tool {choice} is unavailable under the current authorization")
-        return by_id[choice],{"method":self.name,"selected":choice,"selectionWallNs":time.perf_counter_ns()-at,
-                              "modelCalled":self.actor is not None,**details}
+            if self.name == "combined":
+                affected = sum(d["authorized"] for d in diagnosis["services"].values())
+                choice = "D" if affected <= 2 else "K" if affected <= 8 else "J"
+            else:
+                choice = self.name
+            if choice not in by_id:
+                raise ValueError(f"Requested tool {choice} is unavailable under the current authorization")
+            receipt = {"method": self.name, "modelCalled": False, "selected": choice}
+        receipt["selectionWallNs"] = time.perf_counter_ns() - at
+        return by_id[choice], receipt

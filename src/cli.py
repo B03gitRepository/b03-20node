@@ -23,7 +23,7 @@ def main():
     run.add_argument("--mode", choices=["package", "single", "workorder"], default="workorder")
     run.add_argument("--initial-admission", choices=["residual","audit","original"], default="residual",
                      help="At the first admitted work order, check authorized omissions on residual links")
-    run.add_argument("--policy", choices=[*"ABCDEFGHIJKL","combined","model"], default="I",
+    run.add_argument("--policy", default="I",
                      help="Authorized RC tool, conditional D/K/J rule, or frozen checkpoint")
     run.add_argument("--checkpoint",type=Path,default=os.environ.get("B03_CHECKPOINT"))
     run.add_argument("--tokenizer",type=Path,default=os.environ.get("B03_TOKENIZER"))
@@ -39,6 +39,17 @@ def main():
     check = actions.add_parser("verify", help="Validate causal evidence, native device writes, QoS, and packet accounts")
     check.add_argument("directory", type=Path)
     check.add_argument("--report", type=Path, help="New file for complete per-service verification results")
+    run.add_argument("--components", type=Path, help="Component manifest (default: config/components.json)")
+    run.add_argument("--record-component-io", action="store_true", help="Save exact solver input and output for local reproduction")
+    lookup = actions.add_parser("knowledge", help="Read a versioned technical knowledge entry")
+    lookup.add_argument("--components", type=Path)
+    selector = lookup.add_mutually_exclusive_group(required=True)
+    selector.add_argument("--id", dest="identifier")
+    selector.add_argument("--topic")
+    sample = actions.add_parser("examples", help="Export actual model, solver and knowledge examples from a sealed run")
+    sample.add_argument("directory", type=Path)
+    sample.add_argument("--components", type=Path)
+    sample.add_argument("--output", type=Path, help="Write the examples to a new local file")
     args = parser.parse_args()
     if not __debug__:
         parser.error("Run without -O so all invariant checks execute")
@@ -51,6 +62,22 @@ def main():
             json_file(args.report, result)
         print(json.dumps({k: result[k] for k in ("scene", "nodes", "links", "mode", "acceptedPathChecks", "verifiedDeviceQueryCount", "actualModelCalls", "toolChoices", "business", "packets")}, ensure_ascii=False))
         return
+    from component_config import load_components
+    components = load_components(args.components)
+    if args.command == "knowledge":
+        from tech_knowledge import query
+        print(json.dumps(query(components, identifier=args.identifier, topic=args.topic), ensure_ascii=False, indent=2))
+        return
+    if args.command == "examples":
+        from component_examples import examples
+        result = examples(args.directory.resolve(), components)
+        if args.output:
+            json_file(args.output, result)
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    if args.policy not in (*components.symbols, "model", "combined"):
+        run.error("The requested policy is absent from the configured action catalog")
     if not args.simulator:
         run.error("Supply --simulator or B03_SIMULATOR")
     dependency = simulator_root(args.simulator)
@@ -80,7 +107,15 @@ def main():
     if args.mode != "workorder" and args.policy != "I":
         run.error("--policy is available on the joint OM/RC work-order path")
     from frozen_policy import DecisionPolicy
-    chooser = DecisionPolicy(args.policy, args.checkpoint, args.tokenizer, args.device, args.initial_admission) if args.mode=="workorder" else None
+    chooser = DecisionPolicy(args.policy, args.checkpoint, args.tokenizer, args.device, args.initial_admission,
+                             components=components) if args.mode == "workorder" else None
+    if chooser is not None:
+        from component_config import digest
+        runtime_components = components.identity
+        chooser.identity["workOrderComponentsSha256"] = digest({
+            k:runtime_components[k] for k in ("catalog", "model", "rules", "providerModuleSha256")
+        })
+        chooser.record_component_io = args.record_component_io
     specs = {x.service_id: x for x in scenario.services + scenario.added_services}
     ids = sorted(specs) if args.services == "all" else sorted(set(args.services.split(",")))
     if not ids or not set(ids) <= specs.keys():
@@ -96,7 +131,7 @@ def main():
     config["control"] = {**config["control"], "managed_service_ids": ids}
     pyenv = {pkg: importlib.metadata.version(pkg) for pkg in ["simpy"] + (["a2a-sdk"] if args.mode == "workorder" else [])}
     identity = {"scene": scenario.scenario_id, "script": args.script, "nodeCount": len(scenario.nodes), "linkCount": len(scenario.links), "initialServiceCount": len(scenario.services), "eventCount": len(scenario.events), "case":"packet_control", "sourceHashes": scenario.source_hashes,
-                "rcPolicy": chooser.identity if chooser else None, "releaseManifestSha256": fingerprint, "originalConfigSha256": config_hash,
+                "components": components.identity, "rcPolicy": chooser.identity if chooser else None, "releaseManifestSha256": fingerprint, "originalConfigSha256": config_hash,
                 "simulation": config, "services": ids, "officialDefinitions": {sid: request_row(specs[sid]) for sid in ids},
                 "authority": {"discovery":"all_delivered_registered" if discover_writes else "explicit_roster", "allowedServiceIds": sorted(writable), "protectedServiceIds":sorted(protected), "effectiveWriteIds":sorted(writable - protected), "healthyMigration": False, "preemption": False,
                               "rateScale": config["rate_scale"], "scope": "B03 work orders; package/single use native stock review authority"},
