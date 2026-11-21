@@ -95,6 +95,5 @@ python run.py verify runs/first --report runs/first-check.json
 - [唯一设备写入执行](src/packet/packet_device.py)
 - [逐跳配置读回](src/packet/packet_device_readback.py)
 - [分组与业务指标统计](src/packet/packet_measure.py)
-- [历史组件校验记录](docs/COMPONENT_VALIDATION.md) · [历史验证说明](docs/VALIDATION.md)
 
 </details>

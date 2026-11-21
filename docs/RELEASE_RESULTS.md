@@ -35,7 +35,7 @@ The 100-node INT8 policy chose a hold in the original 34 s scoring window. The f
 
 The online PPO updates were measured on candidate rc04 in two authorized 100-node development episodes. The final release1 verifier and a fresh process reproduced the saved policy. With one sampled decision per episode, the first update changed v374 to v375. The updated policy sampled the next episode before the second update produced v376. All 338 trainable tensors changed on each update. A fresh process reconstructed the final full parameter fingerprint, sampling cursor, next action and behavior probability. The trainer saved a compact replay checkpoint against the pinned full-parameter base. See [training and restoration](MODEL.md).
 
-## Whole workload and historical replay
+## Whole workload
 
 The same short windows were also run with the entire official service list. The score window remains fixed while solver, dispatch and confirmation consume the packet clock.
 
@@ -45,7 +45,5 @@ The same short windows were also run with the entire official service list. The 
 | 100 | 7480 | 7480.000 | 35802.000 | 0 | 0 |
 
 Longer solving can move a configuration beyond the score boundary. A full-service run and a three-service work order have different workloads. Read `coverage` and `includingDrain` when interpreting either one.
-
-The previous public component revision is linked in [the historical comparison](COMPONENT_VALIDATION.md). Replaying an original receipt on its original verifier reproduced the saved report byte for byte for both scales. The current verifier also read the earlier archives.
 
 To reproduce the source tests, set `B03_SIMULATOR` to the provider's engine root and run `python -B -m unittest discover -s tests`. Use the [joint integration guide](JOINT_OPTIMIZATION.md) for the partner configuration matrix and the [simulation interface](SIMULATOR.md) for opt-in terminal-cleanup isolation.
