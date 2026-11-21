@@ -1,0 +1,20 @@
+{
+  "extends": "components.json",
+  "model": {
+    "id": "b03.packet-full-ppo",
+    "version": "1.0.0",
+    "mode": "online-ppo",
+    "entrypoint": "packet_learner:build_model",
+    "provenance": {
+      "localModules": [
+        "frozen_policy",
+        "packet_input"
+      ],
+      "distributions": [
+        "torch",
+        "transformers",
+        "safetensors"
+      ]
+    }
+  }
+}

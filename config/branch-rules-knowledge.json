@@ -1,0 +1,9 @@
+{
+  "extends": "branch-rules.json",
+  "knowledge": {
+    "id": "example.topic-index",
+    "version": "1.1.0",
+    "source": "../knowledge/technical-v2.json",
+    "entrypoint": "example_knowledge:build_knowledge"
+  }
+}

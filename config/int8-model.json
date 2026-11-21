@@ -1,0 +1,15 @@
+{
+  "extends": "components.json",
+  "model": {
+    "id": "b03.frozen-x86-int8",
+    "version": "1.0.0",
+    "entrypoint": "int8_model:build_model",
+    "backend": "x86",
+    "provenance": {
+      "localModules": [
+        "frozen_policy",
+        "packet_input"
+      ]
+    }
+  }
+}
