@@ -48,6 +48,26 @@ def select_i(component, bound, symbol="I"):
 
 
 class RuleContracts(unittest.TestCase):
+    def test_historical_tools_search_only_authorized_work_after_release(self):
+        for symbol in ("B", "C"):
+            with self.subTest(symbol=symbol):
+                frozen = make_bound()
+                snap = frozen["snapshot"]
+                shadow = {**deepcopy(snap["requests"]["one"]), "serviceId": "retained", "priority": 7}
+                snap["requests"]["retained"] = shadow
+                snap["assignments"]["retained"] = None
+                # Its device reservation was deducted from observed capacity. OM grants only 'one'.
+                frozen["authority"]["readableServiceIds"].append("retained")
+                rebind(frozen)
+                catalog = strong_tools.enumerate_actions(snap, frozen["authority"], frozen["config"])
+                action = next(row for row in catalog if row["id"] == symbol)
+                target, audit = strong_tools.solve_action(action, frozen, {})
+                self.assertTrue(audit["valid"])
+                self.assertIsNone(target["retained"])
+                self.assertIsNotNone(target["one"])
+                self.assertEqual(set(audit["pathSearch"]), {"one"})
+                self.assertNotIn("rejectedCandidate", audit)
+
     def test_example_uses_different_feasible_route_on_the_same_i(self):
         b = make_bound()
         original = deepcopy(b)
