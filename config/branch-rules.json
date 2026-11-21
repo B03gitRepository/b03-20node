@@ -1,0 +1,40 @@
+{
+  "extends": "components.json",
+  "catalog": {
+    "version": "example.residual-branch.v1",
+    "symbols": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "L",
+      "M"
+    ]
+  },
+  "model": {
+    "catalogVersion": "example.residual-branch.v1"
+  },
+  "rules": {
+    "id": "example.widest-residual",
+    "version": "1.0.0",
+    "entrypoint": "branch_rules:build_rules",
+    "catalogVersion": "example.residual-branch.v1",
+    "options": {
+      "customTools": {
+        "M": {
+          "template": "L",
+          "tool": "widest_residual",
+          "pool": "delivered_neighbors",
+          "budget": "medium"
+        }
+      }
+    }
+  }
+}

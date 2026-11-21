@@ -3,7 +3,7 @@
 源码自检可在仓库根目录执行。
 
 ```bash
-python -m unittest discover -s tests -v
+python -B -m unittest discover -s tests -v
 ```
 
 按首页说明提供本地数据及分组引擎，然后核验同一次运行。

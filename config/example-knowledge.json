@@ -1,0 +1,7 @@
+{
+  "extends": "knowledge-v2.json",
+  "knowledge": {
+    "id": "example.topic-index",
+    "entrypoint": "example_knowledge:build_knowledge"
+  }
+}

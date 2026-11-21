@@ -31,13 +31,20 @@
   },
   "rules": {
     "id": "b03.strong-tools",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "entrypoint": "builtin",
     "catalogVersion": "b03.tools.v1"
   },
   "knowledge": {
     "id": "b03.technical",
     "version": "1.0.0",
-    "source": "../knowledge/technical-v1.json"
+    "source": "../knowledge/technical-v1.json",
+    "entrypoint": "builtin"
+  },
+  "simulator": {
+    "id": "b03.resnet",
+    "version": "1.1.0",
+    "contractVersion": "b03.packet-simulator.v1",
+    "entrypoint": "builtin"
   }
 }

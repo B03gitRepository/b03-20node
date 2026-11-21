@@ -93,6 +93,13 @@ def policy_observation(state, snapshot, ledger, diagnosis, config, actions):
             "budgets": {k:config[k] for k in ("path_limit","path_expansion_budget","search_budget","search_service_limit")}}
 
 
+def model_instructions(spec):
+    return ("Choose one legal resource-control tool from the current delivered packet observation. "
+        +spec["actionDescriptions"]+" Each table row is [id,bitmask,exceptions]. Bit j (zero-based) replaces defaults[j] for columns[j+1], in increasing bit order. "
+        "Packet rates and shared wire budgets are separate. Preserve original QoS, priority, write permission and healthy paths. "
+        "Reply with one legal symbol.")
+
+
 class FrozenActor:
     def __init__(self, checkpoint, tokenizer_path, device):
         import torch
@@ -139,10 +146,7 @@ class FrozenActor:
                 raise ValueError("Expected one token for action "+symbol)
             self.token_ids.append(ids[0])
         self.limit = min(spec["tokenLimit"],int(config.max_position_embeddings))
-        self.instructions = ("Choose one legal resource-control tool from the current delivered packet observation. "
-            +spec["actionDescriptions"]+" Each table row is [id,bitmask,exceptions]. Bit j (zero-based) replaces defaults[j] for columns[j+1], in increasing bit order. "
-            "Packet rates and shared wire budgets are separate. Preserve original QoS, priority, write permission and healthy paths. "
-            "Reply with one legal symbol.")
+        self.instructions = model_instructions(spec)
         self.identity = {"kind":"frozen-model","version":self.version,"schema":SCHEMA,"symbols":self.symbols,
                          "modelSpecSha256": file_digest(ROOT/"config/model.json"),
                          "checkpointFilesSha256": spec["weightFilesSha256"] if spec["format"]=="hf-safetensors" else
@@ -153,20 +157,27 @@ class FrozenActor:
         torch = self.torch
         messages = [{"role":"system","content":self.instructions},{"role":"user","content":canonical(observation)}]
         tokens = self.tokenizer.apply_chat_template(messages,tokenize=True,add_generation_prompt=True)
+        encoding_receipt = {}
         if len(tokens) > self.limit:
-            raise ValueError(f"Complete packet input has {len(tokens)} tokens; this profile accepts {self.limit}.")
+            from packet_input import fit_complete_input
+            tokens, messages, encoding_receipt = fit_complete_input(self, observation, tokens, messages)
+        measure_forward = getattr(self, "measure_forward", False)
+        if measure_forward:
+            started = time.perf_counter_ns()
         with torch.inference_mode(), torch.autocast(device_type=self.device.type,dtype=torch.bfloat16,enabled=self.device.type=="cuda"):
             x=torch.tensor([tokens],device=self.device)
             logits=self.model(input_ids=x,attention_mask=torch.ones_like(x),use_cache=False,logits_to_keep=1).logits[0,-1]
             allowed=[i for i,s in enumerate(self.symbols) if s in observation["legalActions"]]
             scores=logits[[self.token_ids[i] for i in allowed]].float().softmax(-1).cpu().tolist()
+        if measure_forward:
+            encoding_receipt["inferenceWallNs"] = time.perf_counter_ns() - started
         if not scores or not all(math.isfinite(p) for p in scores):
             raise ValueError("No finite legal action scores")
         choices=[self.symbols[i] for i in allowed]
         action=choices[max(range(len(scores)),key=scores.__getitem__)]
         return action,{"inputTokens":len(tokens),"inputSha256":hashlib.sha256(canonical(messages).encode()).hexdigest(),
                        "legalProbabilities":dict(zip(choices,scores)),"behaviorProbability":1.0,
-                       "parameterVersion":self.version,"observation":observation}
+                       "parameterVersion":self.version,"observation":observation, **encoding_receipt}
 
 
 class DecisionPolicy:

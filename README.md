@@ -2,6 +2,8 @@
 
 OM reads delivered network and demand reports, opens a work order and grants write authority. RC selects a legal tool and asks the scheduling rule for a joint configuration. The device adapter releases and installs configurations through the packet network. OM signs off using per-hop readback. A fixed rule and a frozen model use this same workflow.
 
+[Team interfaces, change submission and scoring](docs/JOINT_OPTIMIZATION.md) · [四组协作说明](docs/COLLABORATION_zh.md) · [Acceptance and measured limits](docs/RELEASE_RESULTS.md)
+
 ## Install and run
 
 Use Python 3.12 and the pinned **resnet_py 1.1.0** packet engine supplied by the simulator provider. The official topology, service requests and event scripts are distributed separately to protect the data provider’s confidential scenario definitions. Extract the competition package next to this checkout and retain its directory structure. The two network scales can use the same data directory.
@@ -11,6 +13,7 @@ mkdir -p ../b03-data
 tar -xf /path/to/competition-data.tar.gz -C ../b03-data
 export B03_DATA="$(cd ../b03-data && pwd)"
 export B03_SIMULATOR=/path/to/resnet_py
+export PYTHONDONTWRITEBYTECODE=1
 python3.12 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -26,10 +29,11 @@ The CPU default runs official script **09** with three services, fixed tool **I*
 
 | Owner | Interface | Default | Replacement |
 |---|---|---|---|
-| Model maintainer | `choose(observation)` returns a legal tool and policy version | Frozen v18 with A–C mapping | [Model contract and factory](docs/MODEL.md) |
-| Scheduling algorithm maintainer | `enumerate_actions(snapshot, authority, config, history=None)` and `solve_action(action, bound, context=None)` | A–L joint routing tools | [Rule contract and factory](docs/RULES.md) |
-| Technical knowledge maintainer | Local read-only query by ID or topic | Technical edition 1.0.0 | [Knowledge schema and switch](docs/KNOWLEDGE.md) |
-| Integration maintainer | Component schema, action catalog, packet work-order verifier | `b03.components.v1` / `b03.tools.v1` | [Default component manifest](config/components.json) |
+| Model team | `choose(observation)` returns a legal tool and policy version | Frozen v18 with A–C mapping | [Model contract and factory](docs/MODEL.md) |
+| Knowledge and rules team | `enumerate_actions(snapshot, authority, config, history=None)` and `solve_action(action, bound, context=None)` | A–L joint routing tools | [Rule contract and factory](docs/RULES.md) |
+| Knowledge and rules team | Versioned read-only query by ID or topic and first-order K044 lookup | Technical edition 1.0.0 | [Knowledge schema and switch](docs/KNOWLEDGE.md) |
+| Simulation team | Registered native-compatible engine and data-plane callbacks | resnet_py 1.1.0 | [Simulator contract and factory](docs/SIMULATOR.md) |
+| Systems integration team | Component schema, action catalog, packet work-order verifier | `b03.components.v1` / `b03.tools.v1` | [Default component manifest](config/components.json) |
 
 An optional `--components FILE` selects a manifest. The examples extend the default and replace one component. A provider factory may live in this source tree or an installed Python module. Record its release and pin its dependencies. Register new model-visible tool IDs in a new catalog version and update model and rule mappings together.
 
@@ -51,7 +55,13 @@ python run.py knowledge --id K045
 python run.py knowledge --components config/knowledge-v2.json --topic clock
 ```
 
-`examples` exports the actual delivered model observation, chosen tool and policy version, the solver’s authorized snapshot and returned proposal, and a released knowledge entry. Full examples include scenario-derived records and belong with the licensed data. [Measured component examples and regression](docs/COMPONENT_VALIDATION.md) gives the public results and selected fields from these runs.
+`examples` exports the actual delivered model observation, chosen tool and policy version, the solver’s authorized snapshot and returned proposal, and a released knowledge entry. Full examples include scenario-derived records and belong with the licensed data. See [joint release acceptance](docs/RELEASE_RESULTS.md) for business results, timing and readback. The [archived component comparison](docs/COMPONENT_VALIDATION.md) links the earlier public revision.
+
+## Rechecking a run
+
+`python run.py verify RUN_DIRECTORY` recalculates the archived business and device checks. Use `python run.py examples RUN_DIRECTORY` to export recorded component input and output. Add `--strict-source --components PATH` to compare the original implementation and active dependencies. Supply the original `--checkpoint` and `--tokenizer` for a frozen model. Add `--simulator PATH` to validate the installed packet engine byte for byte. See [dependency identification and historical replay](docs/PROVENANCE.md).
+
+An early demand end can be evaluated explicitly with `--service-end SERVICE_ID=SECONDS` in a work order. The timestamp is an absolute simulation second inside the scoring window. This experimental activity schedule is recorded in the run alongside the original scenario. Source demand changes use the packet engine's reporting path. OM/RC verifies retirement and reviews waiting demand on a fresh observation.
 
 ## Results and code
 

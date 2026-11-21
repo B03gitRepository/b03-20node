@@ -312,7 +312,8 @@ def solve_action(action, bound, context=None):
     tool = action["tool"]; audit = {}
     if tool == "hold_current": target = clone(s["assignments"]); audit["solverStatus"] = "not_run"
     elif tool in {"priority_greedy", "bounded_search"}:
-        target,audit = solve(s["nodes"],s["links"],s["requests"],s["assignments"],s["observedAtSec"],config,tool)
+        target, audit = solve(s["nodes"], s["links"], s["requests"], s["assignments"],
+                              s["observedAtSec"], config, tool, writable_service_ids=authority["executableServiceIds"])
         audit["solverStatus"] = "historical_implementation"
     elif tool == "backup_restore":
         target,audit = _backup(s,config,context,base,work,caps)

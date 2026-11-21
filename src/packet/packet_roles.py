@@ -145,7 +145,8 @@ def _state(now_ns, links_snapshot, demands_snapshot, confirmed, retained):
                                           latest_probes, floors, now_ns, ttl)
         acks[sid] = {"epoch": record["epoch"], "confirmed_at_ns": record["confirmed_at_ns"],
                      "decision": d, "readback_nodes": samples, "configuration_evidence": witness}
-    return {"now_ns": now_ns, "links": links,
+    hold = links_snapshot.get("controller_deferred_writes", [])
+    return {"now_ns": now_ns, "links": links, **({"controller_deferred_writes": sorted(set(hold))} if hold else {}),
             "node_versions": {nid: p["version"] for nid, p in latest_probes.items()},
             "link_ttl_ns": ttl, "controller_known_node_versions": floors,
             "services": services, "confirmed": acks, "retained_wire_bps": dict(retained or {})}
@@ -263,7 +264,11 @@ def _model(state, headroom, permitted):
     current = {sid: _assignment(acks[sid]["decision"]) if sid in acks and sid not in superseded and sid not in uncertain else None
                for sid in requests}
     modeled_load = loads(raw, current)
-    conditional = loads(raw, {sid: _assignment(acks[sid]["decision"]) for sid in (superseded & permitted) - uncertain})
+    expiring = sorted(sid for sid in (permitted & acks.keys()) - uncertain
+                      if sid in requests and requests[sid]["_deleted"])
+    # Release-only orders cannot offer the old wire of a deferred active revision.
+    reusable = set() if expiring else (superseded & permitted) - uncertain
+    conditional = loads(raw, {sid: _assignment(acks[sid]["decision"]) for sid in reusable})
     confirmed_load = Counter()
     for item in acks.values():
         for lid in item["decision"]["link_path"]:
@@ -284,6 +289,8 @@ def _model(state, headroom, permitted):
               "confirmed_wire_bps": dict(confirmed_load), "uncertain_held_service_ids": sorted(uncertain),
               "superseded_release_before_reuse_bps": {k: v for k, v in conditional.items() if v},
               "fixed_outside_model_bps": {k: v for k, v in fixed.items() if v}}
+    if expiring:
+        ledger["lifecycle_release_ids"] = expiring
     return snapshot, ledger
 
 
@@ -350,11 +357,23 @@ def _diagnose(state, snapshot, ledger, config, allowed, protected):
                      "potential_action_status": potential, "evidence": evidence,
                      "configuration_evidence": old["configuration_evidence"] if old else None,
                      "b03_reasons": details.get(sid, {}).get("reasons", [])}
+    lifecycle = {}
+    if expiring := ledger.get("lifecycle_release_ids"):
+        if not set(expiring) <= set(authorized):
+            raise ValueError("An inactive release lacks OM permission")
+        deferred = sorted(set(authorized) - set(expiring))
+        for sid in deferred:
+            rows[sid]["authorized"] = False
+        lifecycle["lifecycle_release"] = {"owner": "controller", "release_ids": expiring,
+                                          "deferred_active_ids": deferred, "deferred_refresh_ids": refresh}
+        # These fresh, verified old epochs can retire now. Other maintenance
+        # and active work acquire their own authority on the next snapshot.
+        authorized, refresh = expiring, []
     authority.update(policyId="b03.packet.reported-failure-and-admission.v1",
                      policyVersion="wire-shared-healthy-freeze.v1", executableServiceIds=authorized)
     return {"authority": authority, "services": rows, "refresh_ids": refresh,
             "held_confirmed": sorted(set(state["confirmed"]) - set(authorized)),
-            "protected_ids": sorted(protected), "allowed_ids": sorted(allowed)}
+            "protected_ids": sorted(protected), "allowed_ids": sorted(allowed), **lifecycle}
 
 
 def _configuration(protected, snapshot):
@@ -393,7 +412,21 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
     selection = {"method": "lifecycle", "selected": None, "selectionWallNs": 0, "modelCalled": False}
     component_meta = {}
     rules = None
-    if writable:
+    rule_context = None
+    knowledge = None
+    lifecycle = diagnosis.get("lifecycle_release")
+    run_rule = bool(writable) and lifecycle is None
+    if lifecycle:
+        target = deepcopy(model["assignments"])
+        for sid in lifecycle["release_ids"]:
+            target[sid] = None
+        audit = validate_proposal(model, config, b["authority"], target)
+        if not audit["valid"] or audit["changedServiceIds"] != lifecycle["release_ids"]:
+            raise ValueError("Invalid controller lifecycle release")
+        audit.update(solverStatus="controller_lifecycle_release", action=None, pathSearch={},
+                     globallyOptimal=False, targetHash=digest(target))
+        component_meta["lifecycle_release"] = lifecycle
+    elif run_rule:
         from rule_component import begin_sample, external_rules
         rules = external_rules(chooser)
         capture = getattr(chooser, "record_component_io", False)
@@ -403,14 +436,7 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
         catalog = (enumerate_actions(model, b["authority"], config) if rules is None
                    else rules.catalog(b, timing))
         offered = tuple(a["id"] for a in catalog) if rules is not None else ()
-        active_write = any(state["services"].get(sid, {}).get("active") for sid in writable)
-        if active_write:
-            action, selection = chooser.select(catalog, state, model, ledger, diagnosis, config)
-        else:
-            action = next((a for a in catalog if a["id"] == "I"), None)
-            if action is None:
-                raise ValueError("Lifecycle release requires authorized canonical I")
-            selection["selected"] = "I"
+        action, selection = chooser.select(catalog, state, model, ledger, diagnosis, config)
         if capture:
             capture_start = time.perf_counter_ns()
             sample = begin_sample(chooser, action, catalog, b, chooser.context if rules is None else rules.context)
@@ -423,7 +449,7 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
                 timing["solverHookWallNs"] = time.perf_counter_ns() - started
             raw_audit = audit
         else:
-            target, raw_audit, audit = rules.solve(action, offered, b, timing)
+            target, raw_audit, audit, rule_context = rules.propose(action, offered, b, timing)
             excluded += timing["proposalGuardWallNs"]
         if capture:
             capture_start = time.perf_counter_ns()
@@ -434,10 +460,17 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
             excluded += copied
         if timing:
             component_meta["component_timing"] = timing
-        if active_write and not chooser.opening_checked:
+        if not chooser.opening_checked:
             from opening import check_opening
+            from tech_knowledge import check_opening_advice, opening_lookup
+            knowledge = opening_lookup(getattr(chooser, "components", None), work_id,
+                                       b["identity"]["sourceSnapshotHash"], state, diagnosis,
+                                       chooser.initial_admission, action["id"])
             old_target_hash = digest(target)
+            prior = deepcopy(target) if knowledge is not None and knowledge["output"] else None
             target, admission = check_opening(target, model, config, b["authority"], chooser.initial_admission, action["tool"]=="hold_current")
+            if knowledge is not None:
+                knowledge["procedureCheck"] = check_opening_advice(knowledge, prior, target, model, b["authority"], admission)
             if admission["applied"]:
                 guard = validate_proposal(model,config,b["authority"],target)
                 if not guard["valid"]:
@@ -445,13 +478,12 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
                 audit["toolOnlyTargetHash"] = old_target_hash
                 audit["targetHash"] = digest(target)
             audit["openingAdmission"] = admission
-            chooser.opening_checked = True
     else:
         target = deepcopy(model["assignments"])
         audit = {"solverStatus": "no_authorized_work", "action": None, "pathSearch": {},
                  "proposedActions": [], "prefixRisk": [], "globallyOptimal": False}
     after_solver = time.perf_counter_ns()
-    elapsed = after_solver - started - excluded if writable else 0
+    elapsed = after_solver - started - excluded if run_rule else 0
     choices = {}
     rejected = []
     for sid in writable:
@@ -479,6 +511,10 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
     ledger = dict(ledger, proposed_wire_bps={
         lid: load + ledger["fixed_outside_model_bps"].get(lid, 0)
         for lid, load in final_load.items() if load or ledger["fixed_outside_model_bps"].get(lid, 0)})
+    if knowledge is not None:
+        from tech_knowledge import opening_outcome
+        knowledge["disposition"] = opening_outcome(knowledge, audit["openingAdmission"], choices, install_ids)
+        component_meta["knowledge_io"] = knowledge
     snapshot_hash = digest(state)
     decision = elapsed + selection["selectionWallNs"]
     if rules is not None:
@@ -489,13 +525,20 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
         if timing["chargedComponentWallNs"] < 0:
             raise ValueError("Component and native decision clocks disagree")
         decision = charged
+    elif lifecycle:
+        decision = time.perf_counter_ns() - rc_start
+        component_meta["lifecycle_wall_ns"] = decision
+    if run_rule:
+        chooser.opening_checked = True
+        if rules is not None and not rejected:
+            rules.context = rule_context
     return {"work_id": work_id, "snapshot_id": snapshot_hash, "policy_hash": policy_hash,
             "decisions": choices, "authorized": list(writable), "solver_wall_ns": elapsed,
             "decision_wall_ns": decision, "tool_choice": selection,
             "release_ids": release_ids, "install_ids": install_ids, "refresh_ids": diagnosis["refresh_ids"],
             "scope": scope, "solver_scope": logical_scope,
             "target": target, "wire_ledger": ledger, "solver_audit": audit,
-            "real_solver_calls": int(bool(writable)), **component_meta}
+            "real_solver_calls": int(run_rule), **component_meta}
 
 
 
@@ -748,11 +791,12 @@ class _PacketAgents:
         self.orders = {}
 
     def scopes(self, state):
+        protected = self.protected | set(state.get("controller_deferred_writes", ()))
         if self.allowed is not None:
-            return self.allowed, self.protected
+            return self.allowed, protected
         known = set(state["services"]) | set(state["confirmed"])
         eligible = {sid for sid, row in state["services"].items() if row["registered"]} | set(state["confirmed"])
-        return eligible, self.protected & known
+        return eligible, protected & known
 
     def handle(self, request):
         kind, wid, p = request["kind"], request["work_id"], request["payload"]
@@ -772,15 +816,25 @@ class _PacketAgents:
         if kind == "control_request":
             if diagnosis != p["diagnosis"] or not request["parent_message_id"]:
                 raise ValueError("RC cannot reproduce OM authority on this snapshot")
-            return _resource(wid, state, model, ledger, config, diagnosis, self.policy_hash, self.chooser)
+            result = _resource(wid, state, model, ledger, config, diagnosis, self.policy_hash, self.chooser)
+            if "reassessment_after_release" in p:
+                result["reassessment_after_release"] = p["reassessment_after_release"]
+            return result
         if kind != "observe":
             raise ValueError("Unknown packet role operation")
         data = {"state": state, "policy_hash": self.policy_hash, "diagnosis": diagnosis}
+        if "reassessment_after_release" in p:
+            data["reassessment_after_release"] = p["reassessment_after_release"]
         res, receipt = self.exchange("control_request", wid, request["snapshot_id"], data,
                                      parent_message_id=request["message_id"])
         target = res.pop("target")
         bound = _bound(wid, state, config, diagnosis, model, self.policy_hash)
         scope = _device_scope(bound, state, target)
+        lifecycle = diagnosis.get("lifecycle_release")
+        if (res.get("lifecycle_release") != lifecycle
+                or (lifecycle and (res["release_ids"] != lifecycle["release_ids"] or res["install_ids"]))
+                or res.get("reassessment_after_release") != p.get("reassessment_after_release")):
+            raise ValueError("OM rejected lifecycle scope or release evidence binding")
         if (res["scope"] != scope or res["solver_scope"] != candidate_scope(bound, bound, target) or res["authorized"] != diagnosis["authority"]["executableServiceIds"]
                 or res["refresh_ids"] != diagnosis["refresh_ids"]
                 or set(res["refresh_ids"]) & set(res["authorized"])
@@ -843,11 +897,13 @@ class PacketRoles:
                                         dict(payload, state=state, policy_hash=self._agents.policy_hash),
                                         parent_message_id=parent)
 
-    def plan(self, now_ns, links_snapshot, demands_snapshot, confirmed, retained_wire_bps):
+    def plan(self, now_ns, links_snapshot, demands_snapshot, confirmed, retained_wire_bps, *,
+             reassessment_after_release=None):
         state = _state(now_ns, links_snapshot, demands_snapshot, confirmed, retained_wire_bps)
         self._seq += 1
         wid = f"{self._run}-W{self._seq:06d}"
-        plan, om = self._exchange("observe", wid, state, {})
+        payload = {} if reassessment_after_release is None else {"reassessment_after_release": reassessment_after_release}
+        plan, om = self._exchange("observe", wid, state, payload)
         rc = plan.pop("resource_a2a")
         allowed, protected = self._agents.scopes(state)
         if (plan["work_id"] != wid or plan["snapshot_id"] != digest(state)
@@ -858,10 +914,16 @@ class PacketRoles:
         if self._seq == 1:
             self._log({"event": "b03_runtime", "time_ns": now_ns, "implementations": _implementations(),
                        "role_schema": "b03.packet.role.v1", "policy_hash": self.planning_key(),
+                       "lifecycle_policy": "controller-confirmed-expiry.v1",
                        "configuration_evidence": "per_node_query_ttl_or_unchanged_fresh_version",
                        "protocol": om["protocol"], "binding": om["binding"], "sdk_version": om["sdk_version"],
                        "task_store": "separate_in_memory_per_role", "process_restart_recovery": False})
-        if plan["release_ids"] or plan["install_ids"] or plan["refresh_ids"]:
+        # Keep one scalar for no-change orders whose full snapshot is not archived.
+        from competition_metrics import latest_input_arrival
+        self._log({"event": "b03_plan_evidence_clock", "time_ns": now_ns, "work_id": wid,
+                   "snapshot_id": plan["snapshot_id"], "fresh_arrival_ns": latest_input_arrival(state)})
+        if (reassessment_after_release is not None or plan.get("knowledge_io")
+                or plan["release_ids"] or plan["install_ids"] or plan["refresh_ids"]):
             self._log({"event": "b03_observation_evidence", "purpose": "plan", "time_ns": now_ns,
                        "work_id": wid, "snapshot_id": plan["snapshot_id"], "state": state})
         self._log({"event": "b03_om_diagnosis", "time_ns": now_ns, "work_id": wid,

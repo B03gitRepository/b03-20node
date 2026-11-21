@@ -42,11 +42,58 @@ def simulator_root(value):
     return path / "resnet_py" if (path / "resnet_py/src/resnet").is_dir() else path
 
 
-def verify_engine(path):
-    for name, expected in DEPENDENCY["files"].items():
-        if not (path / name).is_file() or sha256(path / name) != expected:
-            raise ValueError(f"Unexpected simulator source: {name}. Supply the pinned resnet_py release.")
-    return DEPENDENCY["runtimeSha256"]
+def validate_engine_lock(lock):
+    """Check the contents of a portable source lock without importing its engine."""
+    if not isinstance(lock, dict) or any(not isinstance(lock.get(k), str) or not lock[k].strip()
+                                         for k in ("distribution", "version")):
+        raise ValueError("The simulator lock requires a distribution and a version")
+    files = lock.get("files")
+    required = {"configs/common.json", "src/resnet/__init__.py", "src/resnet/simulation/simulation.py"}
+    if not isinstance(files, dict) or not required <= files.keys():
+        raise ValueError("The simulator lock omits required native configuration or packet source")
+    for name, fingerprint in files.items():
+        if not isinstance(name, str):
+            raise ValueError("Simulator lock members require relative paths")
+        path = PurePosixPath(name)
+        if (not path.parts or path.is_absolute() or path.as_posix() != name or ".." in path.parts
+                or chr(92) in name or ":" in name or not re.fullmatch(r"[0-9a-f]{64}", str(fingerprint))):
+            raise ValueError(f"Invalid simulator lock member: {name}")
+    canonical = json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    if lock.get("runtimeSha256") != hashlib.sha256(canonical).hexdigest():
+        raise ValueError("Packet simulator fingerprint does not match its file table")
+    if (lock["runtimeSha256"], lock["distribution"], lock["version"]) != (
+            DEPENDENCY["runtimeSha256"], DEPENDENCY["distribution"], DEPENDENCY["version"]):
+        if "pyproject.toml" not in files:
+            raise ValueError("A separately versioned engine must pin its pyproject.toml metadata")
+    return lock
+
+
+def verify_engine(path, lock=None):
+    """Check declared bytes and, for a selected lock, inventory importable source."""
+    path = Path(path).resolve(strict=True)
+    if lock is None:
+        lock = DEPENDENCY  # Historical receipts used the checkout's accepted lock.
+    else:
+        validate_engine_lock(lock)
+        source = path / "src"
+        code_suffixes = {".py", ".pyc", ".pyd", ".so"}
+        unpinned = sorted(p.relative_to(path).as_posix() for p in source.rglob("*")
+                          if p.is_file() and p.suffix in code_suffixes
+                          and "__pycache__" not in p.relative_to(source).parts
+                          and p.relative_to(path).as_posix() not in lock["files"])
+        if unpinned:
+            raise ValueError("Unpinned simulator source: " + ", ".join(unpinned))
+    for name, expected in lock["files"].items():
+        member = (path / name).resolve()
+        if not member.is_relative_to(path) or not member.is_file() or sha256(member) != expected:
+            raise ValueError(f"Unexpected simulator source: {name}. Supply the selected packet release.")
+    if "pyproject.toml" in lock["files"]:
+        import tomllib
+        with (path / "pyproject.toml").open("rb") as handle:
+            project = tomllib.load(handle).get("project", {})
+        if (project.get("name"), project.get("version")) != (lock["distribution"], lock["version"]):
+            raise ValueError("Installed engine metadata differs from its registered distribution/version")
+    return lock["runtimeSha256"]
 
 
 def official_bytes(value, script):

@@ -1,0 +1,12 @@
+{
+  "extends": "components.json",
+  "simulator": {
+    "id": "example.local-port-probes",
+    "version": "1.0.0",
+    "contractVersion": "b03.packet-simulator.v1",
+    "entrypoint": "example_simulator:build",
+    "settings": {
+      "detectionDelayNs": 200000000
+    }
+  }
+}

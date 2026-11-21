@@ -136,7 +136,7 @@ class BusinessMeter:
                 "unmetSecondsByService": {k: v / 1e9 for k, v in sorted(self.by_sid.items())}}
 
 
-class MeasuredSimulation(Simulation):
+class MeasurementMixin:
     """Observe native transitions. A named receive fault is optional in a separate run."""
     def __init__(self, *args, drop_install_ack=False, **kwargs):
         self.meter = None
@@ -169,3 +169,7 @@ class MeasuredSimulation(Simulation):
             self._drop(packet, "b03_receiver_fault_single_ack", link_id)
             return
         super()._link_arrival(packet, peer_node_id, link_id)
+
+
+class MeasuredSimulation(MeasurementMixin, Simulation):
+    """The accepted native packet simulator with the shared business meter."""

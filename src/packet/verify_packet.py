@@ -25,6 +25,38 @@ def sha(path):
         return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
+def verify_business_denominators(intervals, business):
+    totals = Counter()
+    for row in intervals:
+        dt = row["end_ns"] - row["start_ns"]
+        if dt <= 0:
+            raise ValueError("Invalid scoring interval")
+        totals["requested"] += dt * len(row["active"])
+        totals["weighted"] += dt * sum(row["active"].values())
+        totals["unserved"] += row["U_service_ns"]
+        for fraction, denominator in (("connectedPairFraction", "onlinePairDenominator"),
+                                      ("activeEndpointReachableFraction", "activeEndpointDenominator")):
+            value = row[fraction]
+            if row[denominator] < 0 or (value is None) != (row[denominator] == 0):
+                raise ValueError("Connectivity interval denominator disagrees with its fraction")
+            if value is not None:
+                if not 0 <= value <= 1:
+                    raise ValueError("Invalid reachability fraction")
+                totals[fraction] += dt * value
+                totals[denominator] += dt
+    def ratio(numerator, denominator):
+        return totals[numerator] / totals[denominator] if totals[denominator] else None
+    expected = {"requestSeconds": totals["requested"] / 1e9,
+                "priorityRequestSeconds": totals["weighted"] / 1e9,
+                "UOverRequests": ratio("unserved", "requested"),
+                "onlinePairConnectedTimeMean": ratio("connectedPairFraction", "onlinePairDenominator"),
+                "activeEndpointReachableTimeMean": ratio("activeEndpointReachableFraction", "activeEndpointDenominator")}
+    for key, value in expected.items():
+        actual = business[key]
+        if (actual is None) != (value is None) or (value is not None and not math.isclose(actual, value, rel_tol=1e-12, abs_tol=1e-12)):
+            raise ValueError(f"Business interval evidence disagrees with {key}")
+
+
 def demand_original(row):
     return (row["required_bps"], row["delay_limit_s"] * 1000, row["jitter_limit_s"] * 1000,
             row["ber_limit"], row["loss_limit"])
@@ -65,11 +97,16 @@ def compare_qos(graph, decision, req):
     return result, metrics
 
 
-def verify(run):
+def verify(run, *, strict_source=False, components=None, checkpoint=None, tokenizer=None, simulator=None):
     if not __debug__: raise RuntimeError("Verification requires ordinary Python assertions")
     cond,summary=load(run/"CONDITIONS.json"),load(run/"SUMMARY.json")
     from integrity import check_archive
-    check_archive(run,cond)
+    verification = check_archive(run, cond, strict_source=strict_source, components=components,
+                                 checkpoint=checkpoint, tokenizer=tokenizer, simulator=simulator)
+    if "competitionMetrics" in summary or (cond.get("simulatorRuntime") and cond["mode"] == "workorder"):
+        from competition_metrics import competition_metrics
+        if summary.get("competitionMetrics") != competition_metrics(run, summary):
+            raise ValueError("Competition metrics differ from the delivered reports and device receipts")
     mode=cond["mode"]; ct=list(lines(run/"controller.jsonl")); acts=list(lines(run/"b03.jsonl"))
     exe=list(lines(run/"executions.jsonl"));routes=list(lines(run/"routes.jsonl"));bus=list(lines(run/"business-intervals.jsonl"))
     packet=summary["afterDrain"];sc=run/"input";topo=load(sc/"net-topo.json")
@@ -98,6 +135,7 @@ def verify(run):
         assert dict(wire)==x["activeWireBps"]
         sums.update(U=x["U_service_ns"],W=x["W_service_ns"],requests=dt*len(x["active"]),
                     bit_ns=dt*sum(defs[s]["requirement"]["bandwidthBps"] for s in x["active"]))
+    verify_business_denominators(bus, summary["business"])
     for key in ["U","W"]:assert abs(sums[key]/1e9-summary["business"][key])<1e-7
     assert abs(sums["bit_ns"]/1e9-summary["demandBits"])<=len(defs)
     for counts in [summary["endBoundary"],packet]:
@@ -201,7 +239,7 @@ def verify(run):
     for ch in model_choices:
         validate_model_choice(ch, cond["rcPolicy"])
     if model_choices and cond["rcPolicy"].get("mode", "frozen")=="frozen":
-        if len({ch["policyVersion"] for ch in model_choices})!=1:
+        if len({ch.get("policyVersion", ch.get("parameterVersion")) for ch in model_choices})!=1:
             raise ValueError("Frozen policy changed version within a work order run")
     activated=[]
     for x in exe:
@@ -260,7 +298,11 @@ def verify(run):
         kind=pk["message"]["kind"]
         if pk["event"]=="delivered" and kind in ["command","ack"]:
             latency[kind].append(pk["time_ns"]-pk["created_at_ns"])
-    return {"scene":cond["scene"],"nodes":len(topo["nodes"]),"links":len(topo["links"]),"run":run.name,"mode":mode,"summarySha256":sha(run/"SUMMARY.json"),"business":summary["business"],
+    from lifecycle_evidence import check_lifecycle
+    lifecycle = check_lifecycle(plans, acts, demand_index, cond, probe_index)
+    from tech_knowledge import verify_work_order_queries
+    knowledge_queries = verify_work_order_queries(cond, acts)
+    return {"verification":verification,"lifecycle":lifecycle, **({"knowledgeQueries": knowledge_queries, "competitionMetrics": summary["competitionMetrics"]} if "competitionMetrics" in summary else {}),"scene":cond["scene"],"nodes":len(topo["nodes"]),"links":len(topo["links"]),"run":run.name,"mode":mode,"summarySha256":sha(run/"SUMMARY.json"),"business":summary["business"],
             "packets":packet,"authorizedConditions":cond["authority"],"code":cond.get("implementationSha256"),"seed":summary["seed"],"clock":clocks,"engine":summary.get("b03LoopStatus"),
             "afterQA":summary["releaseVerifiedAfterRun"],"nativeInputCondition":{key:cond[key] for key in ["originalConfigSha256","sourceHashes","simulation","officialDefinitions"]},
             "nativeReports":len(reports),"firstServiceReportNs":first_report,"firstPolicyVisibilityNs":visibility,"causalEvidenceChecks":dict(causal),"plansWithIncompleteLinkGraph":missing_samples,"acceptedPathChecks":good_count,
