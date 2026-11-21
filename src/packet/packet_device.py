@@ -22,7 +22,7 @@ from packet_device_readback import (
 
 
 class WorkLoop(ControlLoop):
-    def __init__(self, control, roles, emit):
+    def __init__(self, control, roles, emit, *, defer_unreachable_cleanup=False):
         super().__init__(control.link_reports, control.service_reports, self._send, self._log, control.options)
         self.roles, self.emit = roles, emit
         self.transport, self.native_log = control.send_command, control._controller_log
@@ -32,9 +32,12 @@ class WorkLoop(ControlLoop):
         self.last_result = None
         self.last_verified = None
         self.refresh_blocks = {}
+        self.defer_unreachable_cleanup = defer_unreachable_cleanup
+        self.deferred_cleanups = {}
         self.refresh_completed = 0
         self.refresh_failures = 0
         self.force_review = False
+        self.reassessment_after_release = None
         self.verify_parameters = signature(roles.verify).parameters
         self.last_inputs = None
         self.filtered_ticks = 0
@@ -78,6 +81,15 @@ class WorkLoop(ControlLoop):
             self.versions[node] = max(self.versions.get(node, 0), version)
         # Keep the native fresh-probe view intact. Some arrived ACKs are newer than its last probe.
         links["controller_known_node_versions"] = dict(self.versions)
+        if self.deferred_cleanups:
+            nodes, links_on_hold = self._held_resources()
+            held = {sid for item in self.deferred_cleanups.values() for sid in item["services"]}
+            held.update(sid for sid, record in self.confirmed.items()
+                        if nodes.intersection(record["decision"]["node_path"])
+                        or links_on_hold.intersection(record["decision"]["link_path"]))
+            held.update(sid for sid, row in demands["services"].items()
+                        if nodes.intersection((row["service"]["src_node_id"], row["service"]["dst_node_id"])))
+            links["controller_deferred_writes"] = sorted(held)
         return links, demands
 
     def _install_guard(self, choice, links, demands, now):
@@ -146,12 +158,17 @@ class WorkLoop(ControlLoop):
             raise ValueError("release_decision_conflict")
         if any(not choices[s]["accepted"] or (s in self.confirmed and s not in release) for s in deploy):
             raise ValueError("install_decision_conflict")
+        lifecycle = plan.get("lifecycle_release")
+        if lifecycle and (lifecycle["release_ids"] != release or set(allowed) != set(release) or deploy):
+            raise ValueError("lifecycle_release_scope_conflict")
         scope = plan.get("scope")
         if scope is not None and set(scope["changedServiceIds"]) != set(release) | set(deploy):
             raise ValueError("work_scope_conflict")
         loads = Counter(self.budgets())
         for sid in release:
             row = demands["services"][sid]
+            if lifecycle and row["registered"] and row["active"]:
+                raise ValueError("active_lifecycle_release:" + sid)
             if not row["fresh"] or row["received_at_ns"] > now:
                 raise ValueError("stale_release_authority:" + sid)
             self._add(loads, self.confirmed[sid]["decision"], -1)
@@ -175,7 +192,7 @@ class WorkLoop(ControlLoop):
             "queue": [("release", sid) for sid in release] + [("install", sid) for sid in deploy],
             "completed": {}, "failures": {}, "receipts": {},
             "planned_at_ns": now, "solver_wall_ns": plan.get("solver_wall_ns", 0), "decision_wall_ns": wall, "solver_ready_at_ns": now + wall,
-            "native_plan_ids": [], "joint_rechecked": False, "repair_queue": [],
+            "native_plan_ids": [], "joint_rechecked": False, "repair_queue": [], "lifecycle_release": lifecycle,
         }
 
     def _configuration_key(self, links, demands, now):
@@ -228,6 +245,7 @@ class WorkLoop(ControlLoop):
         current = {
             "links": link_key, "demands": demand_key, "confirmed": installed,
             "reservations": self.budgets(), "versions": dict(self.versions),
+            "deferred_writes": tuple(links.get("controller_deferred_writes", ())),
             "configuration_evidence": self._configuration_key(links, demands, now),
             "policy": (self.config["control_headroom_fraction"], self.config["qos_profile"],
                        self.roles.planning_key() if callable(getattr(self.roles, "planning_key", None)) else None),
@@ -236,6 +254,8 @@ class WorkLoop(ControlLoop):
         changes = ["initial"] if previous is None else [k for k, value in current.items() if previous[k] != value]
         if self.force_review:
             changes.append("configuration_refresh_completed")
+        if self.reassessment_after_release is not None:
+            changes.append("lifecycle_release_confirmed")
         if self.retry_at_ns is not None and now >= self.retry_at_ns:
             changes.append("unconfirmed_work_retry")
         waiting_to_retry = (self.retry_at_ns is not None and now < self.retry_at_ns
@@ -278,6 +298,11 @@ class WorkLoop(ControlLoop):
             "trigger_counts": dict(self.trigger_counts), "last_trigger": deepcopy(self.last_trigger),
             "retry_at_ns": self.retry_at_ns, "last_work_result": deepcopy(self.last_result),
             "last_verified_work_id": self.last_verified,
+            "deferred_cleanups": [dict(work_id=wid, service_id=item["transaction"]["decision"]["service_id"],
+                                       epoch=item["transaction"]["epoch"], node_id=item["node"],
+                                       deferred_at_ns=item["since"], protected_nodes=[item["node"]],
+                                       protected_links=item["links"])
+                                  for wid, item in self.deferred_cleanups.items()],
             "current_work_id": work["work_id"] if work else None, "remaining_operations": list(work["queue"]) if work else [],
             "independent_queries_pending": wait, "pending_native_command": deepcopy(self.pending),
             "transaction_phase": self.transaction["status"] if self.transaction else None,
@@ -287,8 +312,62 @@ class WorkLoop(ControlLoop):
             "solver_clock": "RC selection and solver wall ns charged before eligibility at the next native control tick",
         }
 
+    def _held_resources(self):
+        return ({item["node"] for item in self.deferred_cleanups.values()},
+                {link for item in self.deferred_cleanups.values() for link in item["links"]})
+
+    def _defer_expired_cleanup(self, now):
+        # The original source has acknowledged stop; the entire old epoch is still charged.
+        # Only a timed-out read-only reconciliation can be parked. A live write is never detached.
+        tr = self.transaction
+        if (not tr or self.pending or self.readout or tr["status"] != "unknown"
+                or not tr["source_confirmed"] or now < tr["deadline_ns"]):
+            return
+        original = tr["uncertain_command"]
+        if (original["action"]["op"] != "cleanup" or tr["old"] not in self.retained
+                or now <= original["issued_at_ns"] + original["validity_ns"]):
+            return
+        work = self.work
+        sid = tr["decision"]["service_id"]
+        if work["release_ids"] != [sid] or work["install_ids"] or work["queue"]:
+            return
+        # Other service/epoch rules have distinct keys at shared healthy routers. Their
+        # writes are serialized by the existing per-node version check; no write is in flight here.
+        wid, node = work["work_id"], original["target_node_id"]
+        links = list(tr["decision"]["link_path"])
+        self.deferred_cleanups[wid] = {"work": work, "transaction": tr, "plan_id": self.native_plan_id,
+                                       "node": node, "since": now, "services": [sid], "links": links}
+        self._event("cleanup_deferred", now, plan_id=self.native_plan_id, service_id=sid,
+                    epoch=tr["epoch"], node_id=node, expired_command_id=original["command_id"],
+                    protected_nodes=[node], protected_links=links, protected_services=[sid], retained_wire_bps=self.budgets())
+        self.work = self.transaction = self.native_plan_id = None
+
+    def _resume_reachable_cleanup(self, now, links):
+        for wid, item in self.deferred_cleanups.items():
+            node = item["node"]
+            # Only an arrived fresh probe sampled after this attempt can request another query.
+            for link in links["links"].values():
+                received = link["reporters"].get(node)
+                if not received:
+                    continue
+                sampled, arrived = received["probe"]["observed_at_ns"], received["received_at_ns"]
+                if item["since"] < sampled <= arrived <= now and now - sampled <= self.config["observation_ttl_ns"]:
+                    break
+            else:
+                continue
+            self.work, self.transaction, self.native_plan_id = item["work"], item["transaction"], item["plan_id"]
+            del self.deferred_cleanups[wid]
+            self._event("cleanup_recovery_probe", now, node_id=node, sampled_at_ns=sampled, arrived_at_ns=arrived,
+                        link_id=received["probe"]["link"]["link_id"], seq=received["probe"]["seq"],
+                        epoch=self.transaction["epoch"], retained_wire_bps=self.budgets())
+            self._query(now, self.transaction["uncertain_command"])
+            return True
+        return False
+
     def tick(self, now):
         self.now_ns = now
+        if self.defer_unreachable_cleanup:
+            self._defer_expired_cleanup(now)
         if self.readout is not None:
             self._poll_readout(now)
         elif self.pending or self.transaction:
@@ -297,10 +376,16 @@ class WorkLoop(ControlLoop):
             self._advance_work(now)
         else:
             links, demands = self._snapshots(now)
+            if self.deferred_cleanups and self.reassessment_after_release is None and self._resume_reachable_cleanup(now, links):
+                return
             if not self._gate(links, demands, now):
                 return
             self.last_decision_ns = now
-            plan = self.roles.plan(now, deepcopy(links), deepcopy(demands), deepcopy(self.confirmed), self.budgets())
+            followup = ({} if self.reassessment_after_release is None else
+                        {"reassessment_after_release": self.reassessment_after_release})
+            plan = self.roles.plan(now, deepcopy(links), deepcopy(demands), deepcopy(self.confirmed),
+                                   self.budgets(), **followup)
+            self.reassessment_after_release = None
             if plan is None:
                 return
             if plan.get("refresh_ids"):
@@ -391,11 +476,19 @@ class WorkLoop(ControlLoop):
             choice = work["decisions"][sid]
             links, demands = self._snapshots(now)
             try:
+                if self.deferred_cleanups:
+                    route = self.confirmed[sid]["decision"] if phase == "release" else choice
+                    nodes, protected_links = self._held_resources()
+                    if (sid in links.get("controller_deferred_writes", ()) or nodes.intersection(route["node_path"])
+                            or protected_links.intersection(route["link_path"])):
+                        raise ValueError("unresolved_cleanup_write_scope")
                 if phase == "release":
                     row = demands["services"].get(sid)
                     if (not row or not row["fresh"] or row["received_at_ns"] > now
                             or row["revision"] != choice["demand_revision"]):
                         raise ValueError("release_authority_changed")
+                    if work["lifecycle_release"] and row["active"] and row["registered"]:
+                        raise ValueError("lifecycle_demand_reactivated")
                     checker = getattr(self.roles, "release_authority", None)
                     if callable(checker):
                         authority = checker(now, deepcopy(links), deepcopy(demands), deepcopy(self.confirmed),
@@ -479,6 +572,12 @@ class WorkLoop(ControlLoop):
         }
         self._event("work_verified" if ok else "work_incomplete", now, **self.last_result,
                     retained_wire_bps=self.budgets())
+        if work["lifecycle_release"] and isinstance(result, dict):
+            released = sorted(sid for sid in result["matched"] if sid not in self.confirmed
+                              and "release" in work["completed"].get(sid, ()))
+            if released:
+                self.reassessment_after_release = {"work_id": work["work_id"], "verified_at_ns": now,
+                                                   "release_ids": released}
         if ok:
             self.last_verified = work["work_id"]
             self.retry_delay_ns = self.config["query_interval_ns"]
@@ -834,7 +933,7 @@ class WorkLoop(ControlLoop):
         self._issue(now, node, deepcopy(action))
 
 
-def install(sim, roles, emit):
+def install(sim, roles, emit, *, defer_unreachable_cleanup=False):
     """Attach the adapter immediately after Simulation construction, before the first advance."""
     control = sim.control
     if (sim.config.get("mode") != "control" or control is None or sim.now != 0
@@ -843,7 +942,7 @@ def install(sim, roles, emit):
         raise ValueError("requires a fresh control-mode Simulation")
     if not callable(emit) or not callable(getattr(roles, "plan", None)) or not callable(getattr(roles, "verify", None)):
         raise TypeError("expected an event sink and plan/verify roles")
-    loop = WorkLoop(control, roles, emit)
+    loop = WorkLoop(control, roles, emit, defer_unreachable_cleanup=defer_unreachable_cleanup)
     attach_device_readers(sim)
     control.loop = loop
     return loop
