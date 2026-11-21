@@ -2,7 +2,7 @@
 
 OM reads delivered network and demand reports, opens a work order and grants write authority. RC selects a legal tool and asks the scheduling rule for a joint configuration. The device adapter releases and installs configurations through the packet network. OM signs off using per-hop readback. A fixed rule and a frozen model use this same workflow.
 
-[Team interfaces, change submission and scoring](docs/JOINT_OPTIMIZATION.md) · [四组协作说明](docs/COLLABORATION_zh.md)
+[Team interfaces, change submission and scoring](docs/JOINT_OPTIMIZATION.md) · [四组协作说明](docs/COLLABORATION_zh.md) · [Acceptance and measured limits](docs/RELEASE_RESULTS.md)
 
 ## Install and run
 
@@ -13,6 +13,7 @@ mkdir -p ../b03-data
 tar -xf /path/to/competition-data.tar.gz -C ../b03-data
 export B03_DATA="$(cd ../b03-data && pwd)"
 export B03_SIMULATOR=/path/to/resnet_py
+export PYTHONDONTWRITEBYTECODE=1
 python3.12 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -54,7 +55,7 @@ python run.py knowledge --id K045
 python run.py knowledge --components config/knowledge-v2.json --topic clock
 ```
 
-`examples` exports the actual delivered model observation, chosen tool and policy version, the solver’s authorized snapshot and returned proposal, and a released knowledge entry. Full examples include scenario-derived records and belong with the licensed data. [Measured component examples and regression](docs/COMPONENT_VALIDATION.md) gives the public results and selected fields from these runs.
+`examples` exports the actual delivered model observation, chosen tool and policy version, the solver’s authorized snapshot and returned proposal, and a released knowledge entry. Full examples include scenario-derived records and belong with the licensed data. See [joint release acceptance](docs/RELEASE_RESULTS.md) for business results, timing and readback. The [archived component comparison](docs/COMPONENT_VALIDATION.md) links the earlier public revision.
 
 ## Rechecking a run
 
