@@ -195,11 +195,14 @@ def verify(run):
             good_count+=1
     selections=[z["tool_choice"] for z in plans if "tool_choice" in z]
     model_choices=[ch for ch in selections if ch["modelCalled"]]
+    if any(bool(ch["modelCalled"]) != (ch["method"] == "model") for ch in selections):
+        raise ValueError("A model selection and its call receipt disagree")
+    from model_component import validate_model_choice
     for ch in model_choices:
-        probs=ch["legalProbabilities"]
-        assert set(probs)==set(ch["observation"]["legalActions"]) and abs(sum(probs.values())-1)<1e-5
-        assert ch["behaviorProbability"]==1.0 and ch["selected"] in probs and probs[ch["selected"]]==max(probs.values())
-        assert ch["inputTokens"]>0 and ch["parameterVersion"]==cond["rcPolicy"]["version"]
+        validate_model_choice(ch, cond["rcPolicy"])
+    if model_choices and cond["rcPolicy"].get("mode", "frozen")=="frozen":
+        if len({ch["policyVersion"] for ch in model_choices})!=1:
+            raise ValueError("Frozen policy changed version within a work order run")
     activated=[]
     for x in exe:
         cmd=x["command"]; action=cmd["action"]
@@ -264,7 +267,7 @@ def verify(run):
             "originalQosAndRoute":route_evidence,"physicalActivations":activated,"verifiedDeviceQueryCount":len(reads),
             "openingAdmission":[z["solver_audit"]["openingAdmission"] for z in plans if "openingAdmission" in z.get("solver_audit",{})],
             "actualModelCalls":len(model_choices),"toolChoices":dict(Counter(x["selected"] for x in selections if x["selected"])),
-            "modelChoices":[{k:ch[k] for k in ("parameterVersion","selected","legalProbabilities","behaviorProbability","inputTokens","inputSha256","selectionWallNs")} for ch in model_choices],
+            "modelChoices":[{k:ch[k] for k in ("policyVersion","parameterVersion","selected","legalProbabilities","behaviorProbability","inputTokens","inputSha256","selectionWallNs") if k in ch} for ch in model_choices],
             "selectionWallNs":sum(ch["selectionWallNs"] for ch in selections),"solverWallNs":sum(z.get("solver_wall_ns",0) for z in plans),"a2aRpcWallNsInclusive":sum(z["wall_ns"] for z in rpc),"roleExchanges":len(rpc),"roleKinds":dict(Counter(x["kind"] for x in rpc)),"eventCounts":dict(tally),
             "work":work,"blockedAck":held,"networkPacketLatencyNs":{k:{"count":len(v),"sum":sum(v),"max":max(v)} for k,v in latency.items()},
             "sources":{p.name:sha(p) for p in run.iterdir() if p.is_file() and p.suffix in [".json",".jsonl"]}}

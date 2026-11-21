@@ -387,23 +387,57 @@ def _device_scope(bound, state, target):
 
 
 def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, chooser):
+    rc_start = time.perf_counter_ns()
     b = _bound(work_id, state, config, diagnosis, model, policy_hash)
     writable = diagnosis["authority"]["executableServiceIds"]
     selection = {"method": "lifecycle", "selected": None, "selectionWallNs": 0, "modelCalled": False}
+    component_meta = {}
+    rules = None
     if writable:
-        catalog = enumerate_actions(model, b["authority"], config)
+        from rule_component import begin_sample, external_rules
+        rules = external_rules(chooser)
+        capture = getattr(chooser, "record_component_io", False)
+        timing = {}
+        if rules is not None:
+            timing["setupWallNs"] = time.perf_counter_ns() - rc_start
+        catalog = (enumerate_actions(model, b["authority"], config) if rules is None
+                   else rules.catalog(b, timing))
+        offered = tuple(a["id"] for a in catalog) if rules is not None else ()
         active_write = any(state["services"].get(sid, {}).get("active") for sid in writable)
         if active_write:
             action, selection = chooser.select(catalog, state, model, ledger, diagnosis, config)
         else:
-            action = next(a for a in catalog if a["id"] == "I")
+            action = next((a for a in catalog if a["id"] == "I"), None)
+            if action is None:
+                raise ValueError("Lifecycle release requires authorized canonical I")
             selection["selected"] = "I"
+        if capture:
+            capture_start = time.perf_counter_ns()
+            sample = begin_sample(chooser, action, catalog, b, chooser.context if rules is None else rules.context)
+            timing["sampleCopyWallNs"] = time.perf_counter_ns() - capture_start
         started = time.perf_counter_ns()
-        target, audit = solve_action(action, b, chooser.context)
+        excluded = 0
+        if rules is None:
+            target, audit = solve_action(action, b, chooser.context)
+            if capture:
+                timing["solverHookWallNs"] = time.perf_counter_ns() - started
+            raw_audit = audit
+        else:
+            target, raw_audit, audit = rules.solve(action, offered, b, timing)
+            excluded += timing["proposalGuardWallNs"]
+        if capture:
+            capture_start = time.perf_counter_ns()
+            sample["returned"] = deepcopy({"target": target, "audit": raw_audit})
+            component_meta["component_io"] = sample
+            copied = time.perf_counter_ns() - capture_start
+            timing["sampleCopyWallNs"] += copied
+            excluded += copied
+        if timing:
+            component_meta["component_timing"] = timing
         if active_write and not chooser.opening_checked:
             from opening import check_opening
             old_target_hash = digest(target)
-            target, admission = check_opening(target, model, config, b["authority"], chooser.initial_admission, action["id"]=="A")
+            target, admission = check_opening(target, model, config, b["authority"], chooser.initial_admission, action["tool"]=="hold_current")
             if admission["applied"]:
                 guard = validate_proposal(model,config,b["authority"],target)
                 if not guard["valid"]:
@@ -416,7 +450,8 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
         target = deepcopy(model["assignments"])
         audit = {"solverStatus": "no_authorized_work", "action": None, "pathSearch": {},
                  "proposedActions": [], "prefixRisk": [], "globallyOptimal": False}
-    elapsed = time.perf_counter_ns() - started if writable else 0
+    after_solver = time.perf_counter_ns()
+    elapsed = after_solver - started - excluded if writable else 0
     choices = {}
     rejected = []
     for sid in writable:
@@ -444,13 +479,23 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
     ledger = dict(ledger, proposed_wire_bps={
         lid: load + ledger["fixed_outside_model_bps"].get(lid, 0)
         for lid, load in final_load.items() if load or ledger["fixed_outside_model_bps"].get(lid, 0)})
-    return {"work_id": work_id, "snapshot_id": digest(state), "policy_hash": policy_hash,
+    snapshot_hash = digest(state)
+    decision = elapsed + selection["selectionWallNs"]
+    if rules is not None:
+        finished = time.perf_counter_ns()
+        charged = finished - rc_start - timing.get("sampleCopyWallNs", 0)
+        timing["postProposalWallNs"] = finished - after_solver
+        timing["chargedComponentWallNs"] = charged - decision
+        if timing["chargedComponentWallNs"] < 0:
+            raise ValueError("Component and native decision clocks disagree")
+        decision = charged
+    return {"work_id": work_id, "snapshot_id": snapshot_hash, "policy_hash": policy_hash,
             "decisions": choices, "authorized": list(writable), "solver_wall_ns": elapsed,
-            "decision_wall_ns": elapsed + selection["selectionWallNs"], "tool_choice": selection,
+            "decision_wall_ns": decision, "tool_choice": selection,
             "release_ids": release_ids, "install_ids": install_ids, "refresh_ids": diagnosis["refresh_ids"],
             "scope": scope, "solver_scope": logical_scope,
             "target": target, "wire_ledger": ledger, "solver_audit": audit,
-            "real_solver_calls": int(bool(writable))}
+            "real_solver_calls": int(bool(writable)), **component_meta}
 
 
 
