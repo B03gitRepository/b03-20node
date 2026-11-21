@@ -1,0 +1,43 @@
+{
+  "schema": "b03.components.v1",
+  "catalog": {
+    "version": "b03.tools.v1",
+    "symbols": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "L"
+    ]
+  },
+  "model": {
+    "id": "b03.frozen",
+    "version": "1.0.0",
+    "entrypoint": "builtin",
+    "mode": "frozen",
+    "catalogVersion": "b03.tools.v1",
+    "symbols": [
+      "A",
+      "B",
+      "C"
+    ]
+  },
+  "rules": {
+    "id": "b03.strong-tools",
+    "version": "1.0.0",
+    "entrypoint": "builtin",
+    "catalogVersion": "b03.tools.v1"
+  },
+  "knowledge": {
+    "id": "b03.technical",
+    "version": "1.0.0",
+    "source": "../knowledge/technical-v1.json"
+  }
+}
