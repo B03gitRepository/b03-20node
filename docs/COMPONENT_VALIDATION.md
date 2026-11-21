@@ -1,4 +1,6 @@
-# Component work-order regression
+# Archived component work-order regression
+
+Historical public commit [d13e061](https://github.com/B03gitRepository/b03-20node/commit/d13e0610af11f8acfefa880478a964db52dca485) provides the interfaces and examples measured below. Current opening work orders query K044 when authorized unmet demand is present.
 
 The accepted parent and four component configurations ran on the same pinned simulator, official input bytes, write scope, seed and measured window. Each row is an actual work-order run. The model rows used frozen parameters.
 
@@ -27,4 +29,4 @@ The query for K045 in edition 1.1.0 adds the separation of RC compute time, netw
 
 ## Reproduce
 
-Follow [the setup and six configurations](../README.md). For an independent source-only contract check, run `python -m unittest discover -s tests`. Preserve the per-run `CONDITIONS.json`, `RUN_FILES.json` and verifier report to identify the exact input and implementation.
+Follow [the setup and six configurations](../README.md). For an independent source-only contract check, run `python -B -m unittest discover -s tests`. Preserve the per-run `CONDITIONS.json`, `RUN_FILES.json` and verifier report to identify the exact input and implementation.
