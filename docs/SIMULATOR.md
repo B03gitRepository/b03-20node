@@ -4,14 +4,14 @@ The default work order uses the published `b03.resnet` adapter and the pinned `r
 
 ## Run a different adapter
 
-Set `B03_SIMULATOR` to the read-only native release and `B03_DATA` to this checkout's official scenario folder, extracted dataset or archive. Use a fresh output directory for each run.
+Set `B03_DATA` to the official scenario folder, extracted dataset or archive. The default engine is `simulator/resnet_py/` in this checkout. Use `--simulator` or `B03_SIMULATOR` to select an external release (CLI first). Use a fresh output directory for each run.
 
 ```sh
 python run.py run --output runs/periodic
 python run.py run --components config/example-simulator.json --output runs/local-probes
 python run.py verify runs/local-probes
 python run.py verify runs/local-probes --strict-source \
-  --components config/example-simulator.json --simulator "$B03_SIMULATOR"
+  --components config/example-simulator.json
 ```
 
 The example implements device-local link-change detection. Each endpoint of a link whose parameters or administrative status changed waits the configured detection interval, samples its own ports and sends the usual native probe packets. The default interval in the example is 200,000,000 ns. An offline node cannot send. Network queues, loss, both endpoint reports, observation freshness and device readback remain part of the work order. The baseline uses its original periodic probes. Compare the saved event and both received observations in `SUMMARY.json` and `controller.jsonl`. Earlier detection can be measured separately from U/W, packet cost and configuration completion.

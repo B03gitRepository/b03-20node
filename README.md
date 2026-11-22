@@ -41,12 +41,11 @@
 
 ## 三、5 分钟跑通最小闭环
 
-需要 **Python 3.12**、赛事方分发的官方场景包以及只读分组仿真器 **resnet_py 1.1.0**（两者均不入公开仓，详见 [资产与路径说明](docs/ASSETS.md)）。
+需要 **Python 3.12** 和赛事方分发的官方场景包。分组仿真引擎 **resnet_py 1.1.0** 的源码已内置于 `simulator/resnet_py/`，设置 `B03_DATA` 即可运行。`B03_SIMULATOR` 可选，用于指定外部引擎。详见[资产与路径说明](docs/ASSETS.md)。
 
 ```bash
-# 1. 指向本地官方数据目录与只读仿真器（团队共享服务器已预置）
+# 1. 指向本地官方数据目录
 export B03_DATA=/path/to/b03-data
-export B03_SIMULATOR=/path/to/resnet_py
 export PYTHONDONTWRITEBYTECODE=1
 
 # 2. 创建环境并安装基础依赖
@@ -61,7 +60,7 @@ python run.py verify runs/first --report runs/first-check.json
 
 - **本仓默认配置**：对应官方场景 `data/scenarios/sce20261010-conf02/sce01/`、默认脚本 **`09`**（3 条授权业务、固定工具 `I`、残余准入）；默认参考权重为 **`v18（动作映射 A–C）`**。全量业务可加 `--services all`，更多参数见 `python run.py run --help`。
 - **训练入口说明**：20 节点训练请调用 `src/packet_training.py:run_episode` 采集并核验工单后接入自家优化器；仓库内置的 `train.py step` 参考训练器仅面向 100 节点 `v374` 与脚本 `04/05`。
-- **源码单测**：设置好 `B03_SIMULATOR` 后运行 `python -B -m unittest discover -s tests`（60 项回归测试）。
+- **源码单测**：运行 `python -B -m unittest discover -s tests`（60 项回归测试）。
 
 **进阶用法按需查阅**（不在首页堆命令）：
 - 切换各组插件、跑独立规则 `M` 或对比五项指标 → [docs/JOINT_OPTIMIZATION.md](docs/JOINT_OPTIMIZATION.md)
@@ -77,6 +76,7 @@ python run.py verify runs/first --report runs/first-check.json
 ├── run.py / train.py       # 统一运行、核验、知识查询、样例导出与训练入口
 ├── config/                 # 默认组件清单 (components.json) 及各组替换示例配置
 ├── src/                    # OM/RC、A2A、唯一设备执行、逐跳读回与各组件适配器实现
+├── simulator/              # 分组网络仿真引擎 resnet_py 纯源码（不含官方数据包）
 ├── knowledge/              # 可公开的版本化技术知识 JSON（不含赛事原始数据）
 ├── docs/                   # 架构图、交互流程演示页及四组详细接口文档
 └── tests/                  # 60 项源码与契约回归测试
@@ -85,7 +85,7 @@ python run.py verify runs/first --report runs/first-check.json
 **三点协作约定**：
 1. **分支开发**：从 `main` 切自己分支，通过 `config/` 扩展配置切换自家组件；**每次对比尽量只换 1 个组件**。
 2. **PR 交付物**：附上配置差异、复现命令，以及同条件下的 `run.py verify` 对照表（动作、U/W、耗时、设备生效与读回数）。
-3. **保密红线**：**赛事原始数据（拓扑/业务/脚本）、模型权重、私有仿真器原包，以及包含场景明细的运行轨迹，只存放在本地或服务器授权目录，严禁推送到 GitHub 公开仓。**
+3. **保密红线**：**赛事原始数据（拓扑、业务、脚本和原包自带的官方场景目录）、大体积模型权重及含场景明细的运行日志仅限本地或授权服务器使用。**
 
 <details>
 <summary>关键核心源码文件直达（供系统集成与联调查阅）</summary>

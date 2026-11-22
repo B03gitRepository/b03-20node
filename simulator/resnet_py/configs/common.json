@@ -1,0 +1,34 @@
+{
+  "schema": "resnet-experiment-v1",
+  "simulation": {
+    "progress_interval_s": 60,
+    "sample_modulus": 10000,
+    "drain_s": 240,
+    "queue_packets": 128,
+    "payload_bytes": 1000,
+    "rate_scale": 1,
+    "seed": 73,
+    "control": {
+      "controller_id": "GND001",
+      "mode": "closed_loop",
+      "observation_ttl_ns": 10000000000,
+      "command_validity_ns": 5000000000,
+      "probe_interval_ns": 5000000000,
+      "decision_interval_ns": 1000000000,
+      "tick_ns": 100000000,
+      "ack_wait_ns": 1500000000,
+      "max_retries": 2,
+      "query_interval_ns": 2000000000,
+      "prepare_lease_ns": 30000000000,
+      "old_rule_retention_ns": 2000000000,
+      "transaction_timeout_ns": 45000000000,
+      "control_headroom_fraction": 0.05,
+      "control_primary_link": "L00015",
+      "control_backup_link": "L00016",
+      "port_detection_ns": 200000000,
+      "service_report_interval_ns": 5000000000,
+      "qos_profile": "official"
+    },
+    "queue_bytes": 131072
+  }
+}

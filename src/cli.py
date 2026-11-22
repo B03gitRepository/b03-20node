@@ -10,15 +10,15 @@ from pathlib import Path
 import sys
 import time
 
-from scene import DEPENDENCY, PROFILE, ROOT, prepare, sha256 as checksum, simulator_root, verify_engine, write_json as json_file
+from scene import DEPENDENCY, PROFILE, ROOT, has_bundled_data, prepare, sha256 as checksum, simulator_root, verify_engine, write_json as json_file
 
 
 def main(argv=None, *, on_policy_ready=None):
     parser = argparse.ArgumentParser(description=__doc__)
     actions = parser.add_subparsers(dest="command", required=True)
     run = actions.add_parser("run", help="Run the native packet clock and B03 controls")
-    run.add_argument("--simulator", type=Path, default=os.environ.get("B03_SIMULATOR"), help="Read-only resnet_py release or its parent")
-    run.add_argument("--data", type=Path, default=os.environ.get("B03_DATA"), help="Official dataset archive, extracted root or scenario folder")
+    run.add_argument("--simulator", help="Read-only resnet_py release (default: B03_SIMULATOR or simulator/resnet_py)")
+    run.add_argument("--data", type=Path, default=os.environ.get("B03_DATA") or None, help="Official dataset archive, extracted root or scenario folder")
     run.add_argument("--script", default=PROFILE["script"])
     run.add_argument("--mode", choices=["package", "single", "workorder"], default="workorder")
     run.add_argument("--initial-admission", choices=["residual","audit","original"], default="residual",
@@ -60,7 +60,7 @@ def main(argv=None, *, on_policy_ready=None):
                              help="Also require the original implementation and active component dependencies")
         command.add_argument("--checkpoint", type=Path, help="Original model weights for a strict source check")
         command.add_argument("--tokenizer", type=Path, help="Original tokenizer for a strict source check")
-        command.add_argument("--simulator", type=Path, default=os.environ.get("B03_SIMULATOR"),
+        command.add_argument("--simulator",
                              help="Original packet simulator for a strict source check")
     args = parser.parse_args(argv)
     if not __debug__:
@@ -98,9 +98,9 @@ def main(argv=None, *, on_policy_ready=None):
     components = load_components(args.components)
     if args.policy not in (*components.symbols, "model", "combined"):
         run.error("The requested policy is absent from the configured action catalog")
-    if not args.simulator:
-        run.error("Supply --simulator or B03_SIMULATOR")
     dependency = simulator_root(args.simulator)
+    if args.data is None and not has_bundled_data(dependency, args.script):
+        run.error("Supply --data PATH or set B03_DATA to the official scenario folder or dataset archive.")
     out = args.output.resolve()
     raw_root = args.data.resolve() if args.data and args.data.is_dir() else None
     if out == dependency or dependency in out.parents or (raw_root and (out == raw_root or raw_root in out.parents)):

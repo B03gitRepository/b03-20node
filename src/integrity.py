@@ -184,9 +184,7 @@ def check_archive(run, conditions, *, strict_source=False, components=None, chec
     simulator_check = "release-lock-only"
     if strict_source:
         engine = simulator or os.environ.get("B03_SIMULATOR")
-        if conditions.get("simulatorRuntime") and not engine:
-            raise ValueError("Supply --simulator or B03_SIMULATOR for strict engine verification")
-        if engine:
+        if engine or conditions.get("simulatorRuntime"):
             from simulator_component import archived_engine_lock
             lock = archived_engine_lock(run, conditions, files, default_lock=DEPENDENCY)
             actual = verify_engine(simulator_root(engine), lock) if conditions.get("simulatorRuntime") else verify_engine(simulator_root(engine))

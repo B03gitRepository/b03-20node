@@ -30,6 +30,7 @@ net-topo.json
 script-[0-9][0-9].json
 runtime-traffic.json
 scenario-config.json
+/simulator/resnet_py/configs/official20.json
 *.jsonl
 *.pcap
 *.pcapng

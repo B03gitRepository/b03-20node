@@ -1,12 +1,13 @@
 """The deferred cleanup proof must protect a retained epoch without the simulator."""
 from collections import defaultdict
-import os
 from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src/packet"))
+SRC = Path(__file__).resolve().parents[1] / "src"
+sys.path[:0] = [str(SRC), str(SRC / "packet")]
 from packet_cleanup_evidence import cleanup_budgets
+from scene import simulator_root
 
 
 class DeferredCleanupTests(unittest.TestCase):
@@ -54,9 +55,8 @@ class DeferredCleanupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"timed-out read-only"):
             self.validate()
 
-    @unittest.skipUnless(os.environ.get("B03_SIMULATOR"), "Set B03_SIMULATOR for native controller behavior")
     def test_native_unknown_without_a_matching_query_timeout_stays_attached(self):
-        sys.path.insert(0,str(Path(os.environ["B03_SIMULATOR"]) / "src"))
+        sys.path.insert(0, str(simulator_root() / "src"))
         from packet_device import WorkLoop
         loop=object.__new__(WorkLoop)
         old={"decision":self.choice,"epoch":1}

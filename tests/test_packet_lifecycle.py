@@ -1,7 +1,6 @@
 """Exercise expiry and readmission with the pinned packet engine and real OM/RC endpoints."""
 from copy import deepcopy
 import json
-import os
 from pathlib import Path
 import sys
 import tempfile
@@ -10,8 +9,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / p) for p in ("src", "src/packet", "src/rules", "src/rules/vendor/src")]
-if simulator := os.environ.get("B03_SIMULATOR"):
-    sys.path.insert(0, str(Path(simulator) / "src"))
+from scene import simulator_root
+
+sys.path.insert(0, str(simulator_root() / "src"))
 
 
 class BOnly:
@@ -50,7 +50,6 @@ def contention_scenario():
     return ScenarioSpec("single-expiry", 22, nodes, links, services, (), (), batches, (), {}, {})
 
 
-@unittest.skipUnless(simulator, "Set B03_SIMULATOR to run the native packet lifecycle regression")
 class PacketLifecycle(unittest.TestCase):
     def test_release_confirmed_before_waiting_service_reuses_wire(self):
         from frozen_policy import DecisionPolicy

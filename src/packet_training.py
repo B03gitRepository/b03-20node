@@ -11,7 +11,7 @@ import time
 import uuid
 
 from packet_learner import BASE, PacketLearner, _journal_lock, _load, _save, unweighted_advantage
-from scene import PROFILE, ROOT
+from scene import PROFILE, ROOT, simulator_root
 
 
 def read_json(path):
@@ -94,10 +94,14 @@ def samples_from_work_orders(actual, control, report):
 def run_episode(directory, options, manifest, policy, on_policy_ready=None):
     """Use the standard simulator, OM/RC, device writes, readbacks and archive verifier."""
     from cli import main
-    args = ["run", "--policy", policy, "--components", str(manifest), "--simulator", options["simulator"],
-            "--data", str(data_locations(options["data"])[0]), "--script", options["script"], "--services", options["services"],
+    args = ["run", "--policy", policy, "--components", str(manifest),
+            "--script", options["script"], "--services", options["services"],
             "--start", str(options["start"]), "--end", str(options["end"]), "--drain", str(options["drain"]),
             "--output", str(directory)]
+    if options.get("simulator"):
+        args.extend(["--simulator", str(options["simulator"])])
+    if options.get("data"):
+        args.extend(["--data", str(data_locations(options["data"])[0])])
     if policy == "model":
         args.extend(["--checkpoint", options["checkpoint"], "--tokenizer", options["tokenizer"],
                      "--device", options["device"]])
@@ -256,7 +260,6 @@ def check_output_paths(outputs, assets):
 
 def training_workspace(args):
     """Resolve inputs and output destinations before creating directories or lock files."""
-    from scene import simulator_root
     root = args.workspace.expanduser().resolve()
     assets = {Path(p).expanduser().resolve(strict=True) for p in (args.checkpoint, args.tokenizer)}
     base = f"round-{args.round:03d}"
@@ -323,8 +326,9 @@ def main():
         command.add_argument("--device", choices=["cpu", "cuda"], default="cuda")
     run.add_argument("--components", type=Path, default=ROOT / "config/packet-ppo.json")
     run.add_argument("--script", choices=["04", "05"], required=True)
-    run.add_argument("--simulator", type=Path, required=True)
-    run.add_argument("--data", type=Path, required=True)
+    run.add_argument("--simulator", default=os.environ.get("B03_SIMULATOR") or None,
+                     help="Read-only resnet_py release (default: B03_SIMULATOR or simulator/resnet_py)")
+    run.add_argument("--data", type=Path, default=os.environ.get("B03_DATA") or None)
     run.add_argument("--services", required=True, help="Original service IDs separated by commas, or all")
     run.add_argument("--start", type=int, required=True)
     run.add_argument("--end", type=int, required=True)
@@ -333,6 +337,11 @@ def main():
     args = p.parse_args()
     if not __debug__:
         p.error("Run without -O so archive verification checks are active")
+    if args.command == "step":
+        if args.data is None:
+            run.error("Supply --data PATH or set B03_DATA to the official training inputs.")
+        if not args.simulator:
+            args.simulator = simulator_root()
     root = training_workspace(args)
     if args.command == "step":
         root.mkdir(parents=True, exist_ok=True)

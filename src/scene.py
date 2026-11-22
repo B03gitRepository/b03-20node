@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import sys
@@ -37,8 +38,10 @@ def write_json(path, data):
         stream.write("\n")
 
 
-def simulator_root(value):
-    path = Path(value).expanduser().resolve(strict=True)
+def simulator_root(value=None):
+    """Resolve the CLI override, environment override or bundled packet engine."""
+    selected = value or os.environ.get("B03_SIMULATOR") or ROOT / "simulator/resnet_py"
+    path = Path(selected).expanduser().resolve(strict=True)
     return path / "resnet_py" if (path / "resnet_py/src/resnet").is_dir() else path
 
 
@@ -125,12 +128,18 @@ def official_bytes(value, script):
     return found
 
 
+def has_bundled_data(engine, script):
+    assets = DEPENDENCY.get("bundled20", {})
+    return (PROFILE["nodes"] == 20 and script == "09" and bool(assets)
+            and all((engine / name).is_file() for name in assets))
+
+
 def prepare(engine, data, script, output):
     """Keep the official files byte-identical. Add only native scenario and traffic metadata."""
     from resnet.application.config import load_config
     if data is None:
-        if PROFILE["nodes"] != 20 or script != "09":
-            raise ValueError("Supply --data or B03_DATA for this official scenario/script")
+        if not has_bundled_data(engine, script):
+            raise ValueError("Supply --data PATH or set B03_DATA to the official scenario folder or dataset archive.")
         scenario_dir = engine / "data/OFFICIAL20-script09"
         for name, expected in DEPENDENCY["bundled20"].items():
             if sha256(engine / name) != expected:
