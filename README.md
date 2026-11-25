@@ -1,6 +1,7 @@
 # B03 通信网络资源管控系统（20 节点）
 
-> 本仓库为 **20 节点** 分组仿真协作基线（与另一规模共用同一套组件接口和评测闭环）。  
+> 本仓库为 **20 节点** 分组仿真协作基线（与另一规模共用同一套组件接口和评测闭环）。
+>
 > 核心导航：[四组契约、样例与自测](collab/README.md) · [实测基线与指标](docs/RELEASE_RESULTS.md) · [完整对接与评分指南](docs/JOINT_OPTIMIZATION.md)
 
 ---
@@ -9,7 +10,7 @@
 
 ![B03 通信网络资源管控系统架构全景](docs/architecture.svg)
 
-> 💡 **交互式流程演示**：克隆仓库后，用浏览器直接打开 [docs/flow_demo.html](docs/flow_demo.html) 即可单步播放“一张工单如何走完闭环”及“四组改哪里”（脱敏单文件，无需联网或装依赖）。
+> 💡 **交互式流程演示**：克隆仓库后，用浏览器直接打开 [docs/flow_demo.html](docs/flow_demo.html) 即可单步播放“一张工单如何走完闭环”及“四组改哪里”（离线单文件，无需联网或装依赖）。
 
 系统由 **运维智能体（OM）** 和 **资源控制智能体（RC）** 协作，围绕一张工单走完 5 步闭环：
 
@@ -33,8 +34,9 @@
 | **仿真组** | 通过事件、已送达观测、设备和计量四类公开端口接入分组引擎 | `config/collab-simulator.json` | [仿真组开工](collab/simulator/README.md) |
 | **系统集成组** | OM/RC、A2A、权限目录、方案校验、唯一写入、五指标核验与发版合入 | `config/components.json` | [联调与评分 docs/JOINT_OPTIMIZATION.md](docs/JOINT_OPTIMIZATION.md) |
 
-> **⚠️ 关于“可替换”的客观边界**  
-> 只要遵循本组接口契约，就能通过 `--components config/xxx.json` 热替换自家组件，无需改动主控和评测链路。新算法可先用固定工具 ID（如 `--policy X`）独立验证收益；若希望已训练的模型学会调用新工具，则需登记新目录版本与模型映射，并配合重新训练验证。
+> **⚠️ 关于“可替换”的客观边界**
+>
+> 只要遵循本组接口契约，即可在启动时通过配置（`--components config/xxx.json`）替换组件，无需改动主控和评测链路。新算法可先用固定工具 ID（如 `--policy X`）独立验证收益；若希望已训练的模型学会调用新工具，则需登记新目录版本与模型映射，并配合重新训练验证。
 
 ---
 
@@ -69,15 +71,15 @@ python run.py verify runs/first --report runs/first-check.json
 
 ---
 
-## 四、目录速览与协作红线
+## 四、目录速览与协作约定
 
 ```text
 ├── run.py / episode.py / train.py  # 运行核验、统一采样评价与参考训练入口
 ├── collab/                         # 四组黑盒开工包（精简契约、合成样例与离线自测 check.py）
 ├── config/                         # 默认组件清单 (components.json) 及各组替换示例配置
 ├── src/                            # OM/RC、A2A、唯一设备执行、逐跳读回与各组件适配器实现
-├── simulator/                      # 分组网络仿真引擎 resnet_py 纯源码（不含官方数据包）
-├── knowledge/                      # 可公开的版本化技术知识 JSON（不含赛事原始数据）
+├── simulator/                      # 分组网络仿真引擎 resnet_py 源码
+├── knowledge/                      # 版本化技术知识 JSON
 ├── docs/                           # 架构图、交互流程演示页及四组详细接口文档
 └── tests/                          # 76 项源码与契约回归测试
 ```
@@ -85,7 +87,7 @@ python run.py verify runs/first --report runs/first-check.json
 **三点协作约定**：
 1. **分支开发**：从 `main` 切自己分支，通过 `config/` 扩展配置切换自家组件；**每次对比尽量只换 1 个组件**。
 2. **PR 交付物**：附上配置差异、复现命令，以及同条件下的 `run.py verify` 对照表（动作、U/W、耗时、设备生效与读回数）。
-3. **保密红线**：**赛事原始数据（拓扑、业务、脚本和原包自带的官方场景目录）、大体积模型权重及含场景明细的运行日志仅限本地或授权服务器使用。**
+3. **数据说明**：赛事方无公开许可，具体业务场景数据暂不上传 GitHub；大体积模型权重与运行日志按需保存在本地或服务器即可。
 
 <details>
 <summary>关键核心源码文件直达（供系统集成与联调查阅）</summary>

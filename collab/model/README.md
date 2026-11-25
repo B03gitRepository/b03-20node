@@ -2,7 +2,7 @@
 
 先运行 `python collab/model/check.py`（仅需 Python 3.10+ 标准库）。[完整输入与预期输出](case.json) 由 3 个虚构节点、2 条业务和 1 条已确认路径经生产观测构造器生成。[参考实现](../../src/standalone_selector.py) 仅读取已送达数据。替换自研模块时运行 `python collab/model/check.py --adapter path/to/actor.py`，随后复制一份 [示例配置](../../config/collab-selector.json)，修改其中的 `model.entrypoint` 和有序列表 `symbols` 即可接入真实工单。外部依赖包与资产登记见 [模型详细契约](../../docs/MODEL.md)。
 
-**初始化与单步接口**　工厂函数 `build_model(*, checkpoint, tokenizer, device, config)` 返回策略对象；每张工单由 RC 调用 `choose(observation)`，返回 `(legal_tool_id, {"policyVersion": your_version})`。冻结策略保持单一版本；在线采样策略另须记录真实行为概率并实现保存/恢复钩子（详见 [docs/MODEL.md](../../docs/MODEL.md)）。选定工具后的求解、校验、设备写入、逐跳读回和计分均由系统自动完成。
+**初始化与单步接口**　工厂函数 `build_model(*, checkpoint, tokenizer, device, config)` 返回策略对象；启用模型且工单需要选择工具时，RC 调用 `choose(observation)`，返回 `(legal_tool_id, {"policyVersion": your_version})`。冻结策略保持单一版本；在线采样策略另须记录真实行为概率并实现保存/恢复钩子（详见 [docs/MODEL.md](../../docs/MODEL.md)）。选定工具后的求解、校验、设备写入、逐跳读回和计分均由系统自动完成。
 
 | 观测字段 | 含义与单位 |
 |---|---|

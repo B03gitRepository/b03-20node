@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="B03 通信网络资源管控系统：交互式架构全景与单工单闭环演示（脱敏示意版）。">
+<meta name="description" content="B03 通信网络资源管控系统：交互式架构全景与单工单闭环演示（离线示意版）。">
 <title>B03 · 系统架构与单工单流程演示</title>
 <style>
 :root{
@@ -156,7 +156,7 @@ footer .right-ctl{margin-left:auto;font-size:11.5px;padding:4px 10px;background:
       <h1>从网络事件触发，到逐跳读回签收。</h1>
       <p>一张图看清系统运行逻辑、双角色分工（OM / RC），以及模型、规则、知识库、仿真四个可替换槽位。</p>
     </div>
-    <span class="pill-note">脱敏示意算例 · 离线单文件 · 点击任意组件看仓库入口</span>
+    <span class="pill-note">示意算例 · 离线单文件 · 点击任意组件看仓库入口</span>
   </section>
 
   <section class="product" aria-label="系统全景与流程演示">
@@ -187,7 +187,7 @@ footer .right-ctl{margin-left:auto;font-size:11.5px;padding:4px 10px;background:
 
     <aside class="panorama-side">
       <div id="overview-panel" class="overview-card">
-        <span class="kicker">脱敏示意算例 · 单工单闭环</span>
+        <span class="kicker">示意算例 · 单工单闭环</span>
         <h2>一次链路带宽骤降，<br>系统怎么完成处置？</h2>
         <div class="overview-impact">
           <div><span>示例初始带宽</span><b>20 <small>Mbps</small></b></div>
@@ -252,7 +252,7 @@ footer .right-ctl{margin-left:auto;font-size:11.5px;padding:4px 10px;background:
 </main>
 
 <footer>
-  <span>B03 通信网络资源管控 · 脱敏流程演示页（不含赛事原始拓扑坐标与事件脚本）</span>
+  <span>B03 通信网络资源管控 · 离线流程演示页（示意算例）</span>
   <button id="btn-motion" class="right-ctl">减少动效</button>
 </footer>
 
@@ -337,11 +337,11 @@ footer .right-ctl{margin-left:auto;font-size:11.5px;padding:4px 10px;background:
     },
     input: {
       name:'场景与业务输入', sub:'拓扑 · 业务需求 · 动态事件脚本', detail:'赛事数据仅存本地 / 服务器', color:'blue', pos:[195,882,220],
-      owner:'官方赛事数据（保密，不入公开仓）', replaceable:false,
+      owner:'官方赛事数据（本地提供，暂不上传 GitHub）', replaceable:false,
       summary:'由赛事方单独分发的拓扑、业务清单与动态事件脚本。仅存放在本地或服务器授权目录，通过 B03_DATA 环境变量挂载。',
       inputs:['本地/服务器授权目录中的官方场景包'],
       outputs:['向仿真环境输入初始拓扑与按仿真时钟推进的事件','向控制侧提供原始业务带宽、QoS 与优先级'],
-      files:'docs/ASSETS.md（通过环境变量 B03_DATA 指定，严禁推到 GitHub）'
+      files:'docs/ASSETS.md（通过环境变量 B03_DATA 指定，暂不上传 GitHub）'
     },
     environment: {
       name:'分组网络仿真环境', sub:'resnet_py 1.1.0 · 纳秒时钟与队列', detail:'真实观测与物理设备生效反馈', color:'cyan', pos:[820,882,580],
