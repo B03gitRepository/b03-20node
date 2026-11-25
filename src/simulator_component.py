@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from simulator_ports import VERSION as PUBLIC_CONTRACT
 from component_config import DEFAULT_SIMULATOR
 import scene
 
@@ -43,7 +44,7 @@ def archived_engine_lock(run, conditions, files, *, default_lock=None):
         if conditions["releaseManifestSha256"] != original["runtimeSha256"]:
             raise ValueError("Unknown historical packet simulator release")
         return original
-    if LOCK_MEMBER not in files or not registration or registration.get("contractVersion") != CONTRACT:
+    if LOCK_MEMBER not in files or not registration or registration.get("contractVersion") not in (CONTRACT, PUBLIC_CONTRACT):
         raise ValueError("Missing simulator lock or incompatible adapter in the archived run")
     blob = (Path(run) / LOCK_MEMBER).read_bytes()
     lock = scene.validate_engine_lock(json.loads(blob))
@@ -62,11 +63,18 @@ def archived_engine_lock(run, conditions, files, *, default_lock=None):
 
 def simulation_type(components):
     """Compose the host's measurement hooks with the selected native packet implementation."""
-    from packet_measure import MeasuredSimulation, MeasurementMixin
+    from resnet_bridge import MeasuredSimulation, MeasurementMixin, public_type
     from resnet.simulation.simulation import Simulation
 
     registration = components.simulator
     settings = registration.get("settings", {})
+    if registration.get("contractVersion") == PUBLIC_CONTRACT:
+        if not isinstance(settings, dict):
+            raise ValueError("Public simulator settings must be an object")
+        factory = components.factory("simulator")
+        if factory is None and (_adapter(registration) != dict(DEFAULT_SIMULATOR, version="2.0.0", contractVersion=PUBLIC_CONTRACT) or settings):
+            raise ValueError("The built-in public simulator requires its registered identity and empty settings")
+        return public_type(registration, factory)
     if registration.get("contractVersion") != CONTRACT or not isinstance(settings, dict):
         raise ValueError("Unsupported packet simulator interface or settings")
     factory = components.factory("simulator")

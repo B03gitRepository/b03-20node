@@ -11,13 +11,10 @@ from copy import deepcopy
 from decimal import Decimal
 from inspect import Parameter, signature
 
-from resnet.control.diagnosis import is_active_demand
-from resnet.control.interfaces import validate_policy_result
-from resnet.control.loop import ControlLoop
-from resnet.control.policy import _quality
+from resnet_bridge import ControlLoop, is_active_demand, validate_install_choice
 
 from packet_device_readback import (
-    ack_identity, attach_device_readers, operation_matches, phase_matches, query_receipt, refresh_matches, status_time,
+    ack_identity, operation_matches, phase_matches, query_receipt, refresh_matches, status_time,
 )
 
 
@@ -25,7 +22,7 @@ class WorkLoop(ControlLoop):
     def __init__(self, control, roles, emit, *, defer_unreachable_cleanup=False):
         super().__init__(control.link_reports, control.service_reports, self._send, self._log, control.options)
         self.roles, self.emit = roles, emit
-        self.transport, self.native_log = control.send_command, control._controller_log
+        self.transport, self.native_log = control.send_command, control.log_control
         self.work = None
         self.readout = None
         self.native_plan_id = None
@@ -107,13 +104,7 @@ class WorkLoop(ControlLoop):
                 and row["revision"] == choice.get("demand_revision")):
             raise ValueError("no_fresh_matching_demand")
         service = self.service_reports.get_spec(sid)
-        validate_policy_result({"decided_at_ns": now, "decisions": [choice]}, service, links, now_ns=now)
-        if not choice["accepted"] or choice["reserved_bps"] != service.required_bps:
-            raise ValueError("original_full_payload_rate_required")
-        if self.config["qos_profile"] == "official":
-            _, violations = _quality(service, choice["link_path"], links["links"], 1036, qos_profile="official")
-            if violations:
-                raise ValueError("original_qos:" + ",".join(violations))
+        validate_install_choice(choice, service, links, now, self.config["qos_profile"])
 
     def _capacity_guard(self, loads, link_ids, links):
         share = 1 - Decimal(str(self.config["control_headroom_fraction"]))
@@ -945,15 +936,8 @@ class WorkLoop(ControlLoop):
 
 
 def install(sim, roles, emit, *, defer_unreachable_cleanup=False):
-    """Attach the adapter immediately after Simulation construction, before the first advance."""
-    control = sim.control
-    if (sim.config.get("mode") != "control" or control is None or sim.now != 0
-            or not isinstance(control.loop, ControlLoop) or isinstance(control.loop, WorkLoop)
-            or control.loop.command_count or control.loop.last_decision_ns != -10**18):
-        raise ValueError("requires a fresh control-mode Simulation")
-    if not callable(emit) or not callable(getattr(roles, "plan", None)) or not callable(getattr(roles, "verify", None)):
-        raise TypeError("expected an event sink and plan/verify roles")
-    loop = WorkLoop(control, roles, emit, defer_unreachable_cleanup=defer_unreachable_cleanup)
-    attach_device_readers(sim)
-    control.loop = loop
-    return loop
+    """Bind the work order through delivered caches and the single packet command channel."""
+    if hasattr(sim, "connect_work_order"):
+        return sim.connect_work_order(roles, emit, defer_unreachable_cleanup=defer_unreachable_cleanup)
+    from resnet_bridge import bind_work_loop
+    return bind_work_loop(sim, roles, emit, defer_unreachable_cleanup=defer_unreachable_cleanup)

@@ -1,0 +1,110 @@
+{
+  "settings": {
+    "detectionDelayNs": 7000000
+  },
+  "event": {
+    "sequence": 3,
+    "timeNs": 32000000,
+    "remainingNs": 30000000,
+    "changes": [
+      {
+        "type": "link_state",
+        "linkId": "garden",
+        "endpointIds": [
+          "fern",
+          "moss"
+        ]
+      }
+    ],
+    "probeNodes": [
+      "fern",
+      "moss"
+    ]
+  },
+  "expectedRequests": [
+    {
+      "op": "probe",
+      "nodeId": "fern",
+      "delayNs": 7000000
+    },
+    {
+      "op": "probe",
+      "nodeId": "moss",
+      "delayNs": 7000000
+    }
+  ],
+  "observation": {
+    "kind": "probe",
+    "sampledAtNs": 39000000,
+    "arrivedAtNs": 41000000,
+    "packetUid": 17,
+    "nodeId": "fern",
+    "sequence": 3,
+    "accepted": true,
+    "reason": "accepted",
+    "message": {
+      "kind": "probe",
+      "node_id": "fern",
+      "seq": 3,
+      "observed_at_ns": 39000000,
+      "node_online": true,
+      "version": 2,
+      "link": {
+        "link_id": "garden",
+        "peer_node_id": "moss",
+        "admin_up": true,
+        "endpoint_online": true,
+        "capacity_bps": 6700000,
+        "delay_ns": 1300000,
+        "jitter_ns": 200000,
+        "packet_loss_rate": 0,
+        "ber": 0,
+        "queue_packets": 0
+      }
+    }
+  },
+  "device": [
+    {
+      "phase": "execution",
+      "timeNs": 44000000,
+      "nodeId": "fern",
+      "commandId": "demo/query",
+      "operation": "query",
+      "status": "applied",
+      "executedAtNs": 44000000,
+      "version": 2,
+      "packetUid": 21
+    },
+    {
+      "phase": "ackArrived",
+      "timeNs": 47000000,
+      "nodeId": "fern",
+      "commandId": "demo/query",
+      "status": "applied",
+      "executedAtNs": 44000000,
+      "version": 2,
+      "packetUid": 22,
+      "readback": {
+        "service_id": "orchid",
+        "epoch": 1,
+        "observed_at_ns": 44000000,
+        "request_packet_uid": 21,
+        "result": {
+          "prepared": null,
+          "installed": null,
+          "forwarding": null,
+          "retired": false,
+          "source": null
+        }
+      }
+    }
+  ],
+  "meter": {
+    "startNs": 32000000,
+    "endNs": 39000000,
+    "activeCount": 3,
+    "unmetCount": 1,
+    "unmetServiceNs": 7000000,
+    "weightedUnmetServiceNs": 14000000
+  }
+}

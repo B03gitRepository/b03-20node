@@ -1,5 +1,4 @@
 """Device-local evidence attached to replies to native, independently issued queries."""
-from copy import deepcopy
 
 
 FIELDS = ("next_node_id", "link_id", "reserved_bps", "lease_until_ns")
@@ -7,66 +6,6 @@ FIELDS = ("next_node_id", "link_id", "reserved_bps", "lease_until_ns")
 
 def rule_fields(record):
     return None if record is None else {key: record[key] for key in FIELDS}
-
-
-class ReportingExecutor:
-    """Delegate all commands to the original executor; sample only a successful local query."""
-
-    def __init__(self, executor, read_local):
-        self.executor = executor
-        self.read_local = read_local
-        self.samples = {}
-
-    def __getattr__(self, name):
-        return getattr(self.executor, name)
-
-    def receive(self, command, received_at_ns, packet_uid, source_node_id):
-        ack = self.executor.receive(command, received_at_ns, packet_uid, source_node_id)
-        action = command.get("action", {}) if isinstance(command, dict) else {}
-        if not isinstance(action, dict) or action.get("op") != "query":
-            return ack
-        cid = ack["command_id"]
-        if ack["status"] == "applied":
-            sid, epoch = action["service_id"], action["epoch"]
-            self.samples[cid] = {
-                "service_id": sid, "epoch": epoch, "observed_at_ns": ack["executed_at_ns"],
-                "request_packet_uid": packet_uid, "result": self.read_local(sid, epoch),
-            }
-        if ack["status"] == "applied" or (
-            ack["status"] == "duplicate" and ack["original_status"] == "applied"
-        ):
-            # A duplicate replays the first sample, including its original clock and packet UID.
-            ack["b03_readback"] = deepcopy(self.samples[cid])
-        return ack
-
-
-def attach_device_readers(sim):
-    """Build one read-only port per node before the simulator advances."""
-
-    def port(node, executor):
-        def read(sid, epoch):
-            key = (node, sid, epoch)
-            route = sim.rules.get(key)
-            local_source = None
-            if node == executor.service_specs[sid].src_node_id:
-                source, demand = sim.sources[sid], executor.demand_state(sid)
-                local_source = {
-                    "enabled": executor.source_enabled.get(sid, False),
-                    "active_epoch": executor.active_epochs.get(sid, 0),
-                    "epoch": source.epoch, "rate_bps": source.rate_bps, "active": source.active,
-                    "demand_revision": demand["revision"], "demand_active": demand["active"],
-                    "registered": demand["registered"],
-                }
-            return {
-                "prepared": rule_fields(executor.prepared.get((sid, epoch))),
-                "installed": rule_fields(executor.installed.get((sid, epoch))),
-                "forwarding": None if route is None else {"next_node_id": route[0], "link_id": route[1]},
-                "retired": key in sim.retired, "source": local_source,
-            }
-        return read
-
-    for node, executor in list(sim.control.node_executors.items()):
-        sim.control.node_executors[node] = ReportingExecutor(executor, port(node, executor))
 
 
 def ack_identity(ack, command, network_source):

@@ -202,7 +202,7 @@ class DecisionPolicy:
                 self.actor, identity = load_model(components, checkpoint, tokenizer, device, FrozenActor)
         self.identity = dict(identity, initialAdmission=initial_admission)
 
-    def _model_choice(self, by_id, state, snapshot, ledger, diagnosis, config):
+    def _model_choice(self, by_id, state, snapshot, ledger, diagnosis, config, knowledge_context=None):
         symbols = self.identity.get("symbols")
         if symbols is None:
             symbols = self.actor.symbols
@@ -212,6 +212,8 @@ class DecisionPolicy:
         if not legal:
             raise ValueError("The model has no legal tool under the current authorization")
         observation = policy_observation(state, snapshot, ledger, diagnosis, config, legal)
+        if knowledge_context is not None:
+            observation["knowledgeContext"] = deepcopy(knowledge_context)
         current_version = getattr(self.actor, "version", None)
         result = self.actor.choose(deepcopy(observation))
         if not isinstance(result, (tuple, list)) or len(result) != 2 or not isinstance(result[1], dict):
@@ -249,7 +251,7 @@ class DecisionPolicy:
             self._last_frozen_version = version
         return selected, receipt
 
-    def select(self, actions, state, snapshot, ledger, diagnosis, config):
+    def select(self, actions, state, snapshot, ledger, diagnosis, config, *, knowledge_context=None):
         at = time.perf_counter_ns()
         by_id = {}
         for action in actions:
@@ -258,7 +260,7 @@ class DecisionPolicy:
                 raise ValueError("Enumerated actions require distinct tool IDs")
             by_id[symbol] = action
         if self.actor is not None:
-            choice, receipt = self._model_choice(by_id, state, snapshot, ledger, diagnosis, config)
+            choice, receipt = self._model_choice(by_id, state, snapshot, ledger, diagnosis, config, knowledge_context)
         else:
             if self.name == "combined":
                 affected = sum(d["authorized"] for d in diagnosis["services"].values())

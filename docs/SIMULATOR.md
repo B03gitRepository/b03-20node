@@ -2,7 +2,22 @@
 
 The default work order uses the published `b03.resnet` adapter and the pinned `resnet-simulation` 1.1.0 packet engine. The engine applies official topology, demand and event inputs on a SimPy nanosecond clock. OM and RC exchange detached observations through A2A. Commands, acknowledgments and per-node configuration queries travel over the simulated packet network. The host meter evaluates installed paths, QoS and actual demand independently.
 
-## Run a different adapter
+## Public extension
+
+For a new simulator extension, start with the [four public data ports, standalone example and test](../collab/simulator/README.md). The work-order host uses delivered snapshots and a single command transmitter. The backend bridge owns the native control-loop attachment, node-local readback sampling, physical clock hooks and evaluator snapshot. The packet engine continues to supply its native queue, transport and device state machine.
+
+## Backend implementation boundary
+
+The native bridge is the single place that attaches the simulator's control loop and node executors, reads installed forwarding state, and maps physical batches into public events. Changes to a callback provider use only the four inputs above. When changing the native backend, preserve these host-facing operations:
+
+| Operation | Used by the host |
+| --- | --- |
+| Clock and delivery | `advance(until_ns)` processes native events in order, including same-time priorities. `start_ns`, `end_ns`, `stop_ns` and `now` are integer nanoseconds. `summary()` returns packet, device and conservation counters at the scoring and drain boundaries. |
+| Delivered evidence | `connect_work_order(roles, emit, ...)` binds one work loop to read-only link/demand snapshots at a given clock, the delivered demand specification, controller log and the sole command sender. OM/RC receive the existing detached role inputs. |
+| Device | The native command path serializes, transmits, executes and acknowledges each instruction. The bridge attaches one local reader per node; a duplicate query replays its first sample and packet identity. |
+| Measurement | `start_meter(directory, solver)` schedules scoring snapshots after same-time native changes. `meter_snapshot()` supplies physical nodes, links, active original demands and end-to-end installed assignments only to the evaluator; `payload_wire_bps(rate)` accounts wire cost. `finish_meter()` produces final U/W, denominators and connectivity. `close_meter()` and `close()` release resources. |
+
+## Native v1 compatibility
 
 Set `B03_DATA` to the official scenario folder, extracted dataset or archive. The default engine is `simulator/resnet_py/` in this checkout. Use `--simulator` or `B03_SIMULATOR` to select an external release (CLI first). Use a fresh output directory for each run.
 

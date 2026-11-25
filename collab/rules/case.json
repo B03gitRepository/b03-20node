@@ -1,0 +1,219 @@
+{
+  "enumerate": {
+    "candidates": [
+      {
+        "id": "X",
+        "tool": "ranked_feasible_path",
+        "scope": {
+          "kind": "writable_active",
+          "serviceIds": [
+            "ribbon"
+          ]
+        },
+        "stage": "repair",
+        "pool": "reported_neighbors",
+        "budget": "workorder"
+      }
+    ]
+  },
+  "solve": {
+    "schema": "b03.rules.patch.v2",
+    "work": "demo-order",
+    "snapshot": {
+      "nodes": {
+        "aster": {
+          "_online": true
+        },
+        "birch": {
+          "_online": true
+        },
+        "cedar": {
+          "_online": true
+        }
+      },
+      "links": {
+        "rose": {
+          "srcNodeId": "aster",
+          "dstNodeId": "cedar",
+          "_online": true,
+          "params": {
+            "bandwidthBps": 4600,
+            "delayMs": 9,
+            "jitterMs": 0.5,
+            "ber": 1e-8,
+            "packetLossRate": 0.0001
+          }
+        },
+        "mint": {
+          "srcNodeId": "aster",
+          "dstNodeId": "birch",
+          "_online": true,
+          "params": {
+            "bandwidthBps": 4080,
+            "delayMs": 1.8,
+            "jitterMs": 0.5,
+            "ber": 1e-8,
+            "packetLossRate": 0.0001
+          }
+        },
+        "plum": {
+          "srcNodeId": "birch",
+          "dstNodeId": "cedar",
+          "_online": true,
+          "params": {
+            "bandwidthBps": 4480,
+            "delayMs": 1.3,
+            "jitterMs": 0.5,
+            "ber": 1e-8,
+            "packetLossRate": 0.0001
+          }
+        }
+      },
+      "requests": {
+        "ribbon": {
+          "serviceId": "ribbon",
+          "srcNodeId": "aster",
+          "dstNodeId": "cedar",
+          "priority": 4,
+          "category": "demo",
+          "serviceType": "stream",
+          "requiredPayloadBps": 1234,
+          "_deleted": false,
+          "requirement": {
+            "bandwidthBps": 1279,
+            "delayMs": 15,
+            "jitterMs": 3,
+            "ber": 0.00001,
+            "packetLossRate": 0.002
+          }
+        },
+        "candle": {
+          "serviceId": "candle",
+          "srcNodeId": "aster",
+          "dstNodeId": "cedar",
+          "priority": 1,
+          "category": "demo",
+          "serviceType": "stream",
+          "requiredPayloadBps": 777,
+          "_deleted": false,
+          "requirement": {
+            "bandwidthBps": 805,
+            "delayMs": 15,
+            "jitterMs": 3,
+            "ber": 0.00001,
+            "packetLossRate": 0.002
+          }
+        }
+      },
+      "assignments": {
+        "ribbon": null,
+        "candle": {
+          "nodes": [
+            "aster",
+            "cedar"
+          ],
+          "linkIds": [
+            "rose"
+          ],
+          "allocatedBps": 805
+        }
+      },
+      "observedAtSec": 4.2,
+      "stateVersion": "synthetic-state",
+      "configVersion": "synthetic-config",
+      "objectiveVersion": "priority-classes-then-min-changes-v1"
+    },
+    "authority": {
+      "policyId": "example",
+      "policyVersion": "demo-authority",
+      "readableServiceIds": [
+        "candle",
+        "ribbon"
+      ],
+      "executableServiceIds": [
+        "ribbon"
+      ],
+      "frozenHealthyServiceIds": [
+        "candle"
+      ],
+      "protectedServiceIds": [
+        "candle"
+      ],
+      "allowedMethods": [
+        "priority_greedy"
+      ]
+    },
+    "budgets": {
+      "path_limit": 3,
+      "path_expansion_budget": 17,
+      "search_budget": 23,
+      "search_service_limit": 3,
+      "maxHops": 2,
+      "maxChangedServices": 1
+    },
+    "action": {
+      "id": "X",
+      "tool": "ranked_feasible_path",
+      "scope": {
+        "kind": "writable_active",
+        "serviceIds": [
+          "ribbon"
+        ]
+      },
+      "stage": "repair",
+      "pool": "reported_neighbors",
+      "budget": "workorder"
+    },
+    "knowledgeContext": [
+      {
+        "id": "EX.PATH.DELAY",
+        "topics": [
+          "latency",
+          "feasible paths"
+        ],
+        "content": "Try feasible paths in order of increasing end-to-end delay.",
+        "sources": [
+          "collab/rules/README.md"
+        ],
+        "applicability": "Optional ordering among writable paths after applying the original demand, QoS and capacity limits.",
+        "version": "2.0.0"
+      },
+      {
+        "id": "EX.PATH.HOPS",
+        "topics": [
+          "hops",
+          "feasible paths"
+        ],
+        "content": "Try feasible paths with fewer links first.",
+        "sources": [
+          "collab/rules/README.md"
+        ],
+        "applicability": "Optional ordering among writable paths after applying the original demand, QoS and capacity limits.",
+        "version": "2.0.0"
+      }
+    ]
+  },
+  "output": {
+    "patch": {
+      "ribbon": {
+        "nodes": [
+          "aster",
+          "birch",
+          "cedar"
+        ],
+        "linkIds": [
+          "mint",
+          "plum"
+        ],
+        "allocatedBps": 1279
+      }
+    },
+    "audit": {
+      "orderBy": "delay",
+      "usedKnowledge": [
+        "EX.PATH.DELAY"
+      ],
+      "expanded": 3
+    }
+  }
+}

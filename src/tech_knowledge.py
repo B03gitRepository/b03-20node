@@ -41,16 +41,25 @@ def _lookup(components, identifier, topic):
     if reg.get("entrypoint", "builtin") == "builtin":
         return expected, source_hash
     config = {k: deepcopy(reg[k]) for k in ("id", "version", "entrypoint", "options") if k in reg}
-    provider = components.factory("knowledge")(config=config, library=deepcopy(library))
+    provider = None
+    if reg.get("contractVersion") == "b03.knowledge.lookup.v2":
+        cached = getattr(components, "_ranked_knowledge", None)
+        if cached is not None and cached[0] == source_hash:
+            provider = cached[1]
+    if provider is None:
+        provider = components.factory("knowledge")(config=config, library=deepcopy(library))
+        if reg.get("contractVersion") == "b03.knowledge.lookup.v2":
+            components._ranked_knowledge = (source_hash, provider)
     lookup = getattr(provider, "lookup", None)
     if not callable(lookup):
         raise ValueError("A knowledge provider must implement lookup")
     ids = lookup(identifier=identifier, topic=topic)
-    matching = {row["id"]: row for row in expected}
-    if (not isinstance(ids, list) or not all(_text(i) for i in ids)
-            or len(ids) != len(matching) or set(ids) != matching.keys()):
-        raise ValueError("Provider IDs differ from the lookup in the pinned edition")
-    return [matching[i] for i in ids], source_hash
+    entries = _entries(library, reg["version"])
+    if (not isinstance(ids,list) or not all(_text(i) and i in entries for i in ids)
+            or len(ids) != len(set(ids))
+            or identifier is not None and ids != [row["id"] for row in expected]):
+        raise ValueError("Provider IDs are invalid for the query in the pinned edition")
+    return [entries[i] for i in ids], source_hash
 
 
 def query(components, *, identifier=None, topic=None):
@@ -148,7 +157,7 @@ def verify_work_order_queries(conditions, events):
     required = conditions.get("mode") == "workorder" and "knowledge" in proof.get("activeComponents", {})
     plans = [r for r in events if r["event"] == "b03_rc_plan"]
     if not required:
-        if any("knowledge_io" in r for r in plans):
+        if any("knowledge_io" in r or "knowledge_contexts" in r for r in plans):
             raise ValueError("Unregistered knowledge receipt")
         return []
     diagnoses = {r["work_id"]: r for r in events if r["event"] == "b03_om_diagnosis"}
@@ -210,4 +219,9 @@ def verify_work_order_queries(conditions, events):
         results.append({"work": work, "id": question["id"], "version": identity["version"],
                         "sourceSha256": identity["sourceSha256"], "pending": pending,
                         "disposition": expected["disposition"]})
+    if conditions.get("receiptContract") == "b03.packet.workorder.v2":
+        from knowledge_ports import verify
+        results.extend(verify(conditions, events, _entries(json.loads(raw), identity["version"]), identity))
+    elif any("knowledge_contexts" in plan or "rulePatch" in plan.get("solver_audit", {}) for plan in plans):
+        raise ValueError("A v2 component record cannot be interpreted as a v1 work order")
     return results

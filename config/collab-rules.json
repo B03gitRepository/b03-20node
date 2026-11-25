@@ -1,0 +1,42 @@
+{
+  "extends": "components.json",
+  "catalog": {
+    "version": "collab.ranked-route.v2",
+    "symbols": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "L",
+      "X"
+    ]
+  },
+  "model": {
+    "catalogVersion": "collab.ranked-route.v2"
+  },
+  "rules": {
+    "id": "example.patch-router",
+    "version": "2.0.0",
+    "entrypoint": "collab_patch_rule:build_rules",
+    "contractVersion": "b03.rules.patch.v2",
+    "catalogVersion": "collab.ranked-route.v2",
+    "options": {
+      "customTools": {
+        "X": {
+          "tool": "ranked_feasible_path",
+          "scope": "writable_active",
+          "permit": "priority_greedy",
+          "pool": "reported_neighbors",
+          "budget": "workorder"
+        }
+      }
+    }
+  }
+}

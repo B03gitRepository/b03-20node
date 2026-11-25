@@ -109,6 +109,8 @@ def verify(run, *, strict_source=False, components=None, checkpoint=None, tokeni
             raise ValueError("Competition metrics differ from the delivered reports and device receipts")
     mode=cond["mode"]; ct=list(lines(run/"controller.jsonl")); acts=list(lines(run/"b03.jsonl"))
     exe=list(lines(run/"executions.jsonl"));routes=list(lines(run/"routes.jsonl"));bus=list(lines(run/"business-intervals.jsonl"))
+    from simulator_ports import verify_ports
+    verify_ports(run, cond, summary, ct, exe, bus)
     packet=summary["afterDrain"];sc=run/"input";topo=load(sc/"net-topo.json")
     script=cond["script"]
     for key in ("net-topo.json", "bg-service.json", f"scripts/script-{script}.json"):

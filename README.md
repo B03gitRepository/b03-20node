@@ -1,7 +1,7 @@
 # B03 通信网络资源管控系统（20 节点）
 
 > 本仓库为 **20 节点** 分组仿真协作基线（与另一规模共用同一套组件接口和评测闭环）。  
-> 核心导航：[四组协作约定](docs/COLLABORATION_zh.md) · [实测基线与指标](docs/RELEASE_RESULTS.md) · [完整对接与评分指南](docs/JOINT_OPTIMIZATION.md)
+> 核心导航：[四组契约、样例与自测](collab/README.md) · [实测基线与指标](docs/RELEASE_RESULTS.md) · [完整对接与评分指南](docs/JOINT_OPTIMIZATION.md)
 
 ---
 

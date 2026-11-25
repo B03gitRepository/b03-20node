@@ -71,6 +71,14 @@ class CheckedRules:
         self.context = deepcopy(context) if context is not None else {}
         self.symbols = tuple(symbols)
         options = spec.get("options", {})
+        import rule_patch
+        self.patch_mode = spec.get("contractVersion") == rule_patch.V2
+        if spec.get("contractVersion") not in (None, "b03.rules.v1", rule_patch.V2):
+            raise ValueError("Unsupported rule contract")
+        if self.patch_mode:
+            self.custom, self.provided_native, self.output_budgets = rule_patch.registrations(
+                spec, symbols, NATIVE_IDS, NATIVE_METHODS)
+            return
         self.aliases = dict(options.get("toolAliases", {}))
         self.custom = deepcopy(options.get("customTools", {}))
         if not isinstance(self.custom, dict):
@@ -89,6 +97,10 @@ class CheckedRules:
 
     def _legal(self, snapshot, authority, config):
         native = {a["id"]: a for a in strong_tools.enumerate_actions(snapshot, authority, config)}
+        if self.patch_mode:
+            import rule_patch
+            return rule_patch.catalog(self.custom, {k:v for k,v in native.items() if k in self.symbols},
+                                      snapshot, authority)
         legal = {}
         for symbol in self.symbols:
             template = self.aliases.get(symbol, symbol)
@@ -103,6 +115,23 @@ class CheckedRules:
         legal = self._legal(snapshot, authority, config)
         args = deepcopy((snapshot, authority, config, self.context))
         called = perf_counter_ns()
+        if self.patch_mode:
+            from rule_patch import request
+            provided = self.custom.keys() | self.provided_native
+            candidates = [legal[s] for s in self.symbols if s in legal and s in provided]
+            supplied = self.implementation.enumerate_actions(request(bound, candidates=candidates))
+            eligible = {v["id"] for v in candidates}
+            if (not isinstance(supplied, list) or not all(isinstance(s,str) and s in eligible for s in supplied)
+                    or len(set(supplied)) != len(supplied)):
+                raise ValueError("Rule enumeration returned an ineligible or duplicate tool")
+            offered = (legal.keys() - provided) | set(supplied)
+            result = [legal[s] for s in self.symbols if s in offered]
+            if not result:
+                raise ValueError("No rule tool remains for this work order")
+            returned = perf_counter_ns()
+            timing["catalogHookWallNs"] = returned - called
+            timing["catalogGuardWallNs"] = called - before + perf_counter_ns() - returned
+            return result
         supplied = self.implementation.enumerate_actions(*args)
         returned = perf_counter_ns()
         if not isinstance(supplied, list) or not supplied and not (self.custom and NATIVE_IDS & legal.keys()):
@@ -140,7 +169,23 @@ class CheckedRules:
         args = deepcopy((action, bound))
         next_context = deepcopy(self.context)
         called = perf_counter_ns()
-        if self.custom and action["id"] in NATIVE_IDS:
+        custom_patch = self.patch_mode and (action["id"] in self.custom or action["id"] in self.provided_native)
+        if custom_patch:
+            from rule_patch import materialize, request
+            req = request(bound, action=action, budget=self.output_budgets.get(action["budget"]))
+            detached = deepcopy(req)
+            called_provider = perf_counter_ns()
+            reply = self.implementation.solve_action(detached)
+            duration = perf_counter_ns() - called_provider
+            limit_ms = req["budgets"].get("maxSolverWallMs")
+            if limit_ms is not None and duration > limit_ms * 1_000_000:
+                raise ValueError("Rule solver exceeded the measured work-order deadline")
+            target = materialize(req, reply)
+            value = bind_proposal(action, bound, target, {"solverStatus":"external_patch", "globallyOptimal":False,
+                                  "ruleTargetHash":strong_tools.digest(target),
+                                  "rulePatch":{"schema":req["schema"],"input":req,"wallNs":duration,
+                                               "hostConfig":deepcopy(config),"output":deepcopy(reply)}})
+        elif self.patch_mode or self.custom and action["id"] in NATIVE_IDS:
             target, audit = strong_tools.solve_action(*args, context=next_context)
             value = bind_proposal(action, bound, target, audit)
         else:
@@ -175,7 +220,8 @@ class CheckedRules:
             hop_limit = config.get("max_path_hops")
             if path is not None and hop_limit is not None and len(path["linkIds"]) > hop_limit:
                 raise ValueError("Proposed route exceeds the work-order hop budget")
-        _check_budget(action, raw, config, custom=action["id"] in self.custom)
+        if not custom_patch:
+            _check_budget(action, raw, config, custom=action["id"] in self.custom)
         guard = strong_tools.validate_proposal(snapshot, config, authority, target)
         if not guard["valid"]:
             raise ValueError("Original proposal guard rejected component output: " + ", ".join(guard["errors"]))
@@ -209,3 +255,48 @@ def _check_budget(action, audit, config, *, custom=False):
             if field in row and (type(row[field]) is not int or row[field] < 0
                                  or limit in search_limits and row[field] > search_limits[limit]):
                 raise ValueError("Reported path search exceeded " + limit)
+
+def verify_patch_receipt(registered, plan, diagnosis, evidence, rec, knowledge):
+    """Check a sealed patch and its common guards without loading the applicant's code."""
+    from rule_patch import V2, limits, materialize
+    if not isinstance(rec, dict) or set(rec) != {"schema","input","output","hostConfig","wallNs"} or rec["schema"] != V2:
+        raise ValueError("Invalid v2 rule receipt")
+    msg, config, duration = rec["input"], rec["hostConfig"], rec["wallNs"]
+    audit = plan["solver_audit"]
+    bound = audit["binding"]
+    action = msg["action"]
+    snapshot = msg["snapshot"]
+    authority = diagnosis["authority"]
+    if (msg["schema"] != V2 or msg["work"] != plan["work_id"] or bound["workOrderId"] != plan["work_id"]
+            or msg["authority"] != authority or bound["authorityHash"] != strong_tools.digest(authority)
+            or bound["sourceSnapshotHash"] != plan["snapshot_id"] or snapshot["stateVersion"] != plan["snapshot_id"]
+            or strong_tools.digest(evidence["state"]) != plan["snapshot_id"]
+            or bound["physicalStateHash"] != strong_tools.digest(snapshot) or bound["policyHash"] != plan["policy_hash"]
+            or bound["configSha256"] != strong_tools.digest(config) or action != audit["action"]
+            or bound["actionSha256"] != strong_tools.digest(action) or action["id"] != plan["tool_choice"]["selected"]
+            or ("knowledgeContext" in msg) != (knowledge is not None) or msg.get("knowledgeContext") != knowledge
+            or type(duration) is not int or duration < 0):
+        raise ValueError("Rule receipt changed its work order, snapshot, clock, action or authority")
+    opts = registered.get("options", {})
+    declared = opts.get("outputBudgets",{}).get(action["budget"],{})
+    if msg["budgets"] != limits(config,authority,snapshot,declared):
+        raise ValueError("The rule input changed its work-order budgets")
+    if "maxSolverWallMs" in declared and duration > declared["maxSolverWallMs"] * 1_000_000:
+        raise ValueError("Sealed rule exceeded its measured deadline")
+    native = {a["id"]:a for a in strong_tools.enumerate_actions(snapshot,authority,config)}
+    from rule_patch import catalog
+    if catalog(opts.get("customTools",{}),native,snapshot,authority).get(action["id"]) != action:
+        raise ValueError("The sealed rule action differs from its registered semantics")
+    target = materialize(msg, rec["output"])
+    guard = strong_tools.validate_proposal(snapshot,config,authority,target)
+    if not guard["valid"]:
+        raise ValueError("Replayed rule patch failed the common QoS/capacity checks")
+    if audit["ruleTargetHash"] != strong_tools.digest(target):
+        raise ValueError("Replayed rule patch target differs")
+    permitted_later = set(audit.get("openingAdmission",{}).get("applied",[])) | set(audit.get("strictPacketQosRejected",[]))
+    for sid in set(plan["authorized"]) - permitted_later:
+        path, decision = target[sid], plan["decisions"][sid]
+        if ((path is None and decision["accepted"]) or
+                (path and decision["accepted"] and (path["nodes"] != decision["node_path"] or
+                 path["linkIds"] != decision["link_path"] or path["allocatedBps"] != decision["wire_bps"]))):
+            raise ValueError("Replayed rule patch differs from final decision")

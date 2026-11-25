@@ -214,7 +214,7 @@ def main(argv=None, *, on_policy_ready=None):
         sim = engine_type(scenario, config, out, decision_policy=rule, drop_install_ack=args.drop_install_ack)
         stack.callback(sim.close)
         sim.start_meter(out,solver)
-        stack.callback(lambda: sim.meter.file.close())
+        stack.callback(sim.close_meter)
         if args.mode == "workorder":
             from packet_roles import PacketRoles
             from packet_device import install
@@ -228,7 +228,7 @@ def main(argv=None, *, on_policy_ready=None):
         drained = sim.summary()
         if not (drained["checks_passed"] and boundary["checks_passed"]):
             raise RuntimeError("Native packet conservation failed")
-        evaluation = sim.meter.close()
+        evaluation = sim.finish_meter()
         requested = sum(drained["demand_bits_by_service"].values())
         summary = {"mode":args.mode,"seed":config["seed"],"business":evaluation,"demandBits":requested,
                   "endBoundary":boundary["conservation"],"afterDrain":drained["conservation"],
@@ -244,6 +244,9 @@ def main(argv=None, *, on_policy_ready=None):
         print(json.dumps({"mode":args.mode,"window":[args.start,args.end], "U":evaluation["U"],"W":evaluation["W"],
                           "data":drained["conservation"]["data"],"fault":sim.dropped_ack is not None},ensure_ascii=False))
 
+    from simulator_ports import VERSION as public_simulator_contract
+    if components.simulator["contractVersion"] == public_simulator_contract:
+        summary["simulatorPorts"] = sim.ports.receipt()
     if args.mode == "workorder":
         from competition_metrics import competition_metrics
         summary["competitionMetrics"] = competition_metrics(out, summary)

@@ -279,6 +279,7 @@ class EvidenceTests(unittest.TestCase):
 
     def conditions(self, components, proof, raw):
         return {
+            "receiptContract": "b03.packet.workorder.v2",
             "mode": "workorder", "rcPolicy": {"kind": "model-adapter"}, "script": "09",
             "nodeCount": 20, "linkCount": 30, "scene": "fixture/script-09", "releaseManifestSha256": "runtime",
             "sourceHashes": {name: hashlib.sha256(data).hexdigest() for name, data in raw.items()},

@@ -1,0 +1,72 @@
+{
+  "edition": {
+    "schema": "b03.knowledge.v1",
+    "version": "2.0.0",
+    "entries": [
+      {
+        "id": "EX.PATH.DELAY",
+        "topics": [
+          "latency",
+          "feasible paths"
+        ],
+        "content": "Try feasible paths in order of increasing end-to-end delay.",
+        "sources": [
+          "collab/rules/README.md"
+        ],
+        "applicability": "Optional ordering among writable paths after applying the original demand, QoS and capacity limits."
+      },
+      {
+        "id": "EX.PATH.HOPS",
+        "topics": [
+          "hops",
+          "feasible paths"
+        ],
+        "content": "Try feasible paths with fewer links first.",
+        "sources": [
+          "collab/rules/README.md"
+        ],
+        "applicability": "Optional ordering among writable paths after applying the original demand, QoS and capacity limits."
+      }
+    ]
+  },
+  "config": {
+    "id": "example.ranked-knowledge",
+    "version": "2.0.0",
+    "options": {
+      "rankFirst": "EX.PATH.DELAY"
+    }
+  },
+  "topic": "detour guidance",
+  "expectedIDs": [
+    "EX.PATH.DELAY",
+    "EX.PATH.HOPS"
+  ],
+  "canonicalOutput": [
+    {
+      "id": "EX.PATH.DELAY",
+      "topics": [
+        "latency",
+        "feasible paths"
+      ],
+      "content": "Try feasible paths in order of increasing end-to-end delay.",
+      "sources": [
+        "collab/rules/README.md"
+      ],
+      "applicability": "Optional ordering among writable paths after applying the original demand, QoS and capacity limits.",
+      "version": "2.0.0"
+    },
+    {
+      "id": "EX.PATH.HOPS",
+      "topics": [
+        "hops",
+        "feasible paths"
+      ],
+      "content": "Try feasible paths with fewer links first.",
+      "sources": [
+        "collab/rules/README.md"
+      ],
+      "applicability": "Optional ordering among writable paths after applying the original demand, QoS and capacity limits.",
+      "version": "2.0.0"
+    }
+  ]
+}

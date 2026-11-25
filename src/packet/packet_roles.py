@@ -405,7 +405,7 @@ def _device_scope(bound, state, target):
     return candidate_scope(physical, physical, desired)
 
 
-def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, chooser):
+def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, chooser, om_advice=None):
     rc_start = time.perf_counter_ns()
     b = _bound(work_id, state, config, diagnosis, model, policy_hash)
     writable = diagnosis["authority"]["executableServiceIds"]
@@ -414,6 +414,9 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
     rules = None
     rule_context = None
     knowledge = None
+    from knowledge_ports import accepts_model, lookup
+    components = getattr(chooser, "components", None)
+    contexts = {"om":om_advice} if om_advice is not None else {}
     lifecycle = diagnosis.get("lifecycle_release")
     run_rule = bool(writable) and lifecycle is None
     if lifecycle:
@@ -433,10 +436,22 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
         timing = {}
         if rules is not None:
             timing["setupWallNs"] = time.perf_counter_ns() - rc_start
+        for port in ("rules","model"):
+            if port == "model" and getattr(chooser, "actor", None) is None:
+                continue
+            record = lookup(components, port, work_id, b["identity"]["sourceSnapshotHash"], state["now_ns"])
+            if record is not None:
+                contexts[port] = record
+        if "rules" in contexts and rules is not None and rules.patch_mode:
+            b["knowledgeContext"] = contexts["rules"]["output"]
         catalog = (enumerate_actions(model, b["authority"], config) if rules is None
                    else rules.catalog(b, timing))
         offered = tuple(a["id"] for a in catalog) if rules is not None else ()
-        action, selection = chooser.select(catalog, state, model, ledger, diagnosis, config)
+        if "model" in contexts and accepts_model(components.model, chooser.identity):
+            action, selection = chooser.select(catalog, state, model, ledger, diagnosis, config,
+                                               knowledge_context=contexts["model"]["output"])
+        else:
+            action, selection = chooser.select(catalog, state, model, ledger, diagnosis, config)
         if capture:
             capture_start = time.perf_counter_ns()
             sample = begin_sample(chooser, action, catalog, b, chooser.context if rules is None else rules.context)
@@ -517,6 +532,11 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
         component_meta["knowledge_io"] = knowledge
     snapshot_hash = digest(state)
     decision = elapsed + selection["selectionWallNs"]
+    if contexts:
+        component_meta["knowledge_contexts"] = contexts
+        # RC lookup precedes solver timing. The external rule clock below already includes it.
+        if rules is None:
+            decision += sum(rec["wallNs"] for port,rec in contexts.items() if port != "om")
     if rules is not None:
         finished = time.perf_counter_ns()
         charged = finished - rc_start - timing.get("sampleCopyWallNs", 0)
@@ -527,6 +547,12 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
         decision = charged
     elif lifecycle:
         decision = time.perf_counter_ns() - rc_start
+    if om_advice is not None:
+        # The OM port runs before RC starts its clock.
+        decision += om_advice["wallNs"]
+        if rules is not None:
+            timing["chargedComponentWallNs"] += om_advice["wallNs"]
+    if lifecycle:
         component_meta["lifecycle_wall_ns"] = decision
     if run_rule:
         chooser.opening_checked = True
@@ -816,13 +842,18 @@ class _PacketAgents:
         if kind == "control_request":
             if diagnosis != p["diagnosis"] or not request["parent_message_id"]:
                 raise ValueError("RC cannot reproduce OM authority on this snapshot")
-            result = _resource(wid, state, model, ledger, config, diagnosis, self.policy_hash, self.chooser)
+            result = _resource(wid, state, model, ledger, config, diagnosis, self.policy_hash,
+                               self.chooser, p.get("om_advisory"))
             if "reassessment_after_release" in p:
                 result["reassessment_after_release"] = p["reassessment_after_release"]
             return result
         if kind != "observe":
             raise ValueError("Unknown packet role operation")
         data = {"state": state, "policy_hash": self.policy_hash, "diagnosis": diagnosis}
+        from knowledge_ports import lookup
+        advisory = lookup(getattr(self.chooser, "components", None), "om", wid, request["snapshot_id"], state["now_ns"])
+        if advisory is not None:
+            data["om_advisory"] = advisory
         if "reassessment_after_release" in p:
             data["reassessment_after_release"] = p["reassessment_after_release"]
         res, receipt = self.exchange("control_request", wid, request["snapshot_id"], data,
@@ -852,6 +883,8 @@ class _PacketAgents:
                             "observe_message_id": request["message_id"], "release_ids": res["release_ids"],
                             "install_ids": res["install_ids"], "decisions": {sid: res["decisions"][sid] for sid in changed},
                             "old": {sid: state["confirmed"][sid] for sid in res["release_ids"]}}
+        if advisory is not None:
+            diagnosis = dict(diagnosis, knowledgeContext=advisory["output"])
         return dict(res, diagnosis=diagnosis, resource_a2a=receipt)
 
 
@@ -922,7 +955,8 @@ class PacketRoles:
         from competition_metrics import latest_input_arrival
         self._log({"event": "b03_plan_evidence_clock", "time_ns": now_ns, "work_id": wid,
                    "snapshot_id": plan["snapshot_id"], "fresh_arrival_ns": latest_input_arrival(state)})
-        if (reassessment_after_release is not None or plan.get("knowledge_io")
+        if (reassessment_after_release is not None or plan.get("knowledge_io") or plan.get("knowledge_contexts")
+                or plan.get("solver_audit",{}).get("rulePatch")
                 or plan["release_ids"] or plan["install_ids"] or plan["refresh_ids"]):
             self._log({"event": "b03_observation_evidence", "purpose": "plan", "time_ns": now_ns,
                        "work_id": wid, "snapshot_id": plan["snapshot_id"], "state": state})

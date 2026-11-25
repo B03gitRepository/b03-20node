@@ -1,0 +1,18 @@
+{
+  "extends": "collab-rules.json",
+  "knowledge": {
+    "entrypoint": "collab_ranked_knowledge:build_knowledge",
+    "contractVersion": "b03.knowledge.lookup.v2",
+    "id": "example.ranked-knowledge",
+    "version": "2.0.0",
+    "source": "../knowledge/collab-routing.json",
+    "bindings": {
+      "rules": {
+        "topic": "detour guidance"
+      }
+    },
+    "options": {
+      "rankFirst": "EX.PATH.DELAY"
+    }
+  }
+}
