@@ -36,7 +36,8 @@
           "pool": "reported_neighbors",
           "budget": "workorder"
         }
-      }
+      },
+      "acceptKnowledge": true
     }
   }
 }

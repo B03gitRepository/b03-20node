@@ -1,5 +1,7 @@
 # Joint optimization guide
 
+For the current four component contracts, fixtures and standalone tests, start at [the collaboration entry](../collab/README.md).
+
 Both network sizes use the same work-order and component contracts. Select the repository whose profile matches your official input. Start with the default work order in the [README](../README.md). Keep its verification report as your comparison.
 
 | Team | Owns | First integration example | Evidence to return |

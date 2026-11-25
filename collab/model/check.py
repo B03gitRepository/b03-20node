@@ -31,6 +31,22 @@ def checked(actor, obs):
     action, meta = output
     if obs != original or action not in original["legalActions"] or not isinstance(meta, dict):
         raise ValueError("Observation changed or action is outside its delivered legal catalog")
+    host_fields = {"method", "modelCalled", "selected", "selectionWallNs", "adapterId", "adapterVersion",
+                   "catalogVersion", "entrypoint", "mode", "modelIO", "legalActions", "actionCatalog"}
+    if host_fields.intersection(meta) or ("observation" in meta and meta["observation"] != original):
+        raise ValueError("Host-owned fields or a different observation in the adapter output")
+    for key in ("behaviorProbabilities", "legalProbabilities"):
+        if key in meta:
+            probs = meta[key]
+            if (not isinstance(probs, dict) or set(probs) != set(original["legalActions"])
+                    or any(type(x) not in (float, int) or not 0 <= x <= 1 for x in probs.values())
+                    or abs(sum(probs.values()) - 1) >= 1e-5):
+                raise ValueError("Expected a distribution on the delivered legal actions")
+    if "behaviorProbability" in meta:
+        prob = meta["behaviorProbability"]
+        if (type(prob) not in (int, float) or not 0 < prob <= 1
+                or ("behaviorProbabilities" in meta and abs(prob - meta["behaviorProbabilities"][action]) >= 1e-5)):
+            raise ValueError("Selected action has an inconsistent behavior probability")
     version = meta.get("policyVersion", meta.get("parameterVersion"))
     if not ((isinstance(version, str) and version.strip()) or (type(version) is int and version >= 0)):
         raise ValueError("Supply the actual policy version")
@@ -61,11 +77,21 @@ def main():
     sampled = checked(actor, deepcopy(obs))
     if args.adapter.resolve() == (ROOT / "src/standalone_selector.py").resolve():
         assert sampled == case["expected"]
+    class InvalidExample:
+        def choose(self, observation):
+            return case["invalidExample"]["output"]
+
+    try:
+        checked(InvalidExample(), deepcopy(obs))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("An out-of-catalog tool was accepted")
     for only in obs["legalActions"]:
         subset = dict(obs, legalActions=[only], actionCatalog={only: obs["actionCatalog"][only]})
         single = checked(actor, deepcopy(subset))
         assert single[0] == only
-    print(json.dumps({"cases": 4, "firstOutput": sampled, "tables": list(tables)}))
+    print(json.dumps({"validCases": 4, "rejectedCases": 1, "firstOutput": sampled, "tables": list(tables)}))
 
 
 if __name__ == "__main__":

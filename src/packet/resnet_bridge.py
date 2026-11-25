@@ -11,6 +11,7 @@ from resnet.control.policy import _quality
 from resnet.control.policy import required_wire_bps
 from resnet.simulation.simulation import Simulation
 
+from simulator_ports import Ports, ack_record, execution_record, meter_record
 from packet_measure import BusinessMeter, request_row
 from packet_device_readback import rule_fields
 
@@ -203,36 +204,52 @@ class PublicSimulation(MeasurementMixin, Simulation):
     """Native engine behind the four public data ports."""
 
     def __init__(self, *args, port_provider=None, **kwargs):
-        from simulator_ports import Ports
         self.ports = Ports(port_provider)
+        self._drained = False
         super().__init__(*args, **kwargs)
 
+    def advance(self, until_ns):
+        if self.ports.terminal:
+            raise RuntimeError("Physical simulation finished before post-drain delivery")
+        super().advance(until_ns)
+        self._drained = until_ns == self.stop_ns
+
+    def finish_meter(self):
+        if not self._drained or self.ports.terminal:
+            raise RuntimeError("Complete all events through the drain boundary before replaying evaluator data")
+        result = super().finish_meter()
+        self.ports.finish(self.stop_ns)
+        return result
+
+    def close(self):
+        try:
+            self.ports.close()
+        finally:
+            super().close()
+
     def meter_interval(self, row):
-        self.ports.observe("meter", {
-            "startNs": row["start_ns"], "endNs": row["end_ns"],
-            "activeCount": len(row["active"]), "unmetCount": len(row["unmet"]),
-            "unmetServiceNs": row["U_service_ns"], "weightedUnmetServiceNs": row["W_service_ns"],
-        })
+        self.ports.observe("meter", meter_record(row))
 
     def _physical_batch(self, row):
+        now = row["time_ns"]
+        if self.control is None or not self.start_ns <= now < self.end_ns:
+            return
         changes = []
         nodes = set()
         for operation in row["operations"]:
             if operation["kind"] != "official_event":
                 continue
             data = operation["payload"]
-            item = {"type": data["eventType"]}
-            if item["type"] in ("link_state", "link_param_change"):
+            if data["eventType"] in ("link_state", "link_param_change"):
                 lid = data["attrs"]["linkId"]
                 endpoints = sorted(self.links[lid].endpoints)
-                item.update(linkId=lid, endpointIds=endpoints)
+                changes.append({"type": data["eventType"], "linkId": lid, "endpointIds": endpoints})
                 nodes.update(endpoints)
-            changes.append(item)
-        now = row["time_ns"]
-        enabled = self.control is not None and self.start_ns <= now < self.end_ns
-        event = {"sequence": row["sequence"], "timeNs": now, "changes": changes,
-                 "probeNodes": sorted(nodes) if enabled else [],
-                 "remainingNs": max(0, self.end_ns - now) if enabled else 0}
+        if not changes:
+            return
+        # Number visible link batches only. A hidden demand-only batch cannot signal the policy via timing or sequence.
+        event = {"sequence": self.ports.counts["event"] + 1, "timeNs": now, "changes": changes,
+                 "probeNodes": sorted(nodes), "remainingNs": self.end_ns - now}
         for node, delay in self.ports.event(event):
             details = {"sequence": row["sequence"], "nodeId": node, "changedAtNs": now, "dueNs": now + delay}
             self.log("simulator-events", {"event": "probe_requested", **details})
@@ -258,20 +275,9 @@ class PublicSimulation(MeasurementMixin, Simulation):
                 "accepted": row["result"]["accepted"], "reason": row["result"]["reason"], "message": msg,
             })
         elif name == "executions":
-            cmd = row["command"]
-            self.ports.observe("device", {
-                "phase": "execution", "timeNs": row["time_ns"], "nodeId": row["node_id"],
-                "commandId": cmd.get("command_id"), "operation": cmd.get("action", {}).get("op"),
-                "status": row["status"], "executedAtNs": row["executed_at_ns"],
-                "version": row["after_version"], "packetUid": row["packet_uid"],
-            })
+            self.ports.observe("device", execution_record(row))
         elif name == "controller" and row["event"] == "ack_received":
-            ack = row["ack"]
-            self.ports.observe("device", {
-                "phase": "ackArrived", "timeNs": row["time_ns"], "nodeId": ack["node_id"],
-                "commandId": ack["command_id"], "status": ack["status"], "executedAtNs": ack["executed_at_ns"],
-                "version": ack["version"], "packetUid": row["packet_uid"], "readback": ack.get("b03_readback"),
-            })
+            self.ports.observe("device", ack_record(row))
 
 
 def public_type(registration, factory):

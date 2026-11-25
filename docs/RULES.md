@@ -1,5 +1,7 @@
 # Replace the rule solver
 
+For the v2 contract, runnable example and standalone test, see the [rules group kit](../collab/rules/README.md). The original plugin registration described below remains available.
+
 A rule component receives one delivered OM/RC work order and proposes assignments. The packet controller checks the proposal, issues device commands and verifies their acknowledgements. The default manifest uses the shipped strong tools. The example switches the rule component while retaining the same tool catalog and fixed I selection.
 
 With the Python environment, simulator and official input from this repository's README, run the following commands from the repository root. Choose a new output directory for each run.

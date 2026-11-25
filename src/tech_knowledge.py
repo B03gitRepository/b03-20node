@@ -33,33 +33,39 @@ def query_library(library, edition, *, identifier=None, topic=None):
 
 
 def _lookup(components, identifier, topic):
-    raw = components.knowledge_path.read_bytes()
-    source_hash = hashlib.sha256(raw).hexdigest()
+    if (identifier is None) == (topic is None) or not _text(identifier if topic is None else topic):
+        raise ValueError("Select exactly one nonempty knowledge ID or topic")
     reg = components.knowledge
-    library = json.loads(raw)
-    expected = query_library(library, reg["version"], identifier=identifier, topic=topic)
-    if reg.get("entrypoint", "builtin") == "builtin":
-        return expected, source_hash
-    config = {k: deepcopy(reg[k]) for k in ("id", "version", "entrypoint", "options") if k in reg}
-    provider = None
-    if reg.get("contractVersion") == "b03.knowledge.lookup.v2":
-        cached = getattr(components, "_ranked_knowledge", None)
-        if cached is not None and cached[0] == source_hash:
-            provider = cached[1]
-    if provider is None:
-        provider = components.factory("knowledge")(config=config, library=deepcopy(library))
-        if reg.get("contractVersion") == "b03.knowledge.lookup.v2":
-            components._ranked_knowledge = (source_hash, provider)
-    lookup = getattr(provider, "lookup", None)
-    if not callable(lookup):
-        raise ValueError("A knowledge provider must implement lookup")
-    ids = lookup(identifier=identifier, topic=topic)
-    entries = _entries(library, reg["version"])
-    if (not isinstance(ids,list) or not all(_text(i) and i in entries for i in ids)
+    ranked = reg.get("contractVersion") == "b03.knowledge.lookup.v2"
+    cached = getattr(components, "_ranked_knowledge", None) if ranked else None
+    if cached is None:
+        raw = components.knowledge_path.read_bytes()
+        source_hash = hashlib.sha256(raw).hexdigest()
+        library = json.loads(raw)
+        entries = _entries(library, reg["version"])
+        provider = None
+        if reg.get("entrypoint", "builtin") != "builtin":
+            config = {k: deepcopy(reg[k]) for k in ("id", "version", "entrypoint", "options") if k in reg}
+            provider = components.factory("knowledge")(config=config, library=deepcopy(library))
+            if not callable(getattr(provider, "lookup", None)):
+                raise ValueError("A knowledge provider must implement lookup")
+        cached = (source_hash, entries, provider)
+        if ranked:
+            if source_hash != components.identity["knowledge"]["sha256"]:
+                raise ValueError("The knowledge source differs from its pinned edition")
+            components._ranked_knowledge = cached
+    source_hash, entries, provider = cached
+    if provider is not None:
+        ids = provider.lookup(identifier=identifier, topic=topic)
+    elif identifier is not None:
+        ids = [identifier] if identifier in entries else []
+    else:
+        ids = [key for key, row in entries.items() if any(topic.casefold() in t.casefold() for t in row["topics"])]
+    if (not isinstance(ids, list) or not all(_text(i) and i in entries for i in ids)
             or len(ids) != len(set(ids))
-            or identifier is not None and ids != [row["id"] for row in expected]):
+            or identifier is not None and ids != ([identifier] if identifier in entries else [])):
         raise ValueError("Provider IDs are invalid for the query in the pinned edition")
-    return [entries[i] for i in ids], source_hash
+    return [deepcopy(entries[i]) for i in ids], source_hash
 
 
 def query(components, *, identifier=None, topic=None):

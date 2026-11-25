@@ -32,11 +32,21 @@ def examples(directory, components=None, *, strict_source=False, checkpoint=None
     check_archive(directory, conditions, strict_source=strict_source, components=components,
                   checkpoint=checkpoint, tokenizer=tokenizer, simulator=simulator)
     model = rule = knowledge = None
+    ports = {}
+    wanted_ports = set(conditions.get("components", {}).get("knowledge", {}).get("bindings", {}))
+    if (conditions.get("rcPolicy") or {}).get("kind") == "rule":
+        wanted_ports.discard("model")
     with (directory / "b03.jsonl").open(encoding="utf-8") as trace:
         for line in trace:
             row = json.loads(line)
             if row.get("event") != "b03_rc_plan":
                 continue
+            for port, record in row.get("knowledge_contexts", {}).items():
+                ports.setdefault(port, record)
+            patch = row.get("solver_audit", {}).get("rulePatch")
+            if rule is None and patch:
+                rule = {"work":row["work_id"], "timeNs":row["time_ns"], "schema":patch["schema"],
+                        "input":patch["input"], "output":patch["output"]}
             if knowledge is None and row.get("knowledge_io"):
                 knowledge = row["knowledge_io"]
             choice = row.get("tool_choice", {})
@@ -45,7 +55,7 @@ def examples(directory, components=None, *, strict_source=False, checkpoint=None
                          "output":{k:choice[k] for k in ("selected", "policyVersion", "parameterVersion", "behaviorProbability", "legalProbabilities") if k in choice}}
             if rule is None and row.get("component_io"):
                 rule = {"work":row["work_id"], "timeNs":row["time_ns"], **row["component_io"]}
-            if knowledge is not None and rule is not None and (model is not None or (conditions.get("rcPolicy") or {}).get("kind") == "rule"):
+            if wanted_ports <= ports.keys() and knowledge is not None and rule is not None and (model is not None or (conditions.get("rcPolicy") or {}).get("kind") == "rule"):
                 break
     if rule is None:
         raise ValueError("Choose an active run recorded with --record-component-io")
@@ -53,4 +63,7 @@ def examples(directory, components=None, *, strict_source=False, checkpoint=None
     if knowledge is None:
         knowledge = ({"status": "opening-lookup-not-triggered"} if "knowledge" in active
                      else knowledge_example(conditions, components))
-    return {"schema":"b03.component.examples.v1", "model":model, "rules":rule, "knowledge":knowledge}
+    result = {"schema":"b03.component.examples.v1", "model":model, "rules":rule, "knowledge":knowledge}
+    if ports:
+        result["knowledgePorts"] = ports
+    return result

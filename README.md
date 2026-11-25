@@ -27,16 +27,13 @@
 
 | 小组 | 你负责替换的部分 | 配置示例（基于 `config/components.json`） | 接口细则文档 |
 |---|---|---|---|
-| **模型组** | `choose(observation)` 在合法目录内选工具；支持冻结推理、CPU INT8 量化与在线训练恢复 | `config/example-model.json`<br>`config/int8-model.json` | [模型接口 docs/MODEL.md](docs/MODEL.md) |
-| **规则组** | `enumerate_actions` 与 `solve_action` 路径与共享容量求解（无设备写权限） | `config/example-rules.json`<br>`config/branch-rules.json` | [规则接口 docs/RULES.md](docs/RULES.md) |
-| **知识库组** | 版本化只读技术知识库与检索器 `lookup(identifier/topic)` | `config/knowledge-v2.json`<br>`config/example-knowledge.json` | [知识接口 docs/KNOWLEDGE.md](docs/KNOWLEDGE.md) |
-| **仿真组** | `b03.packet-simulator.v1` 兼容仿真适配器或引擎版本锁 | `config/example-simulator.json` | [仿真接口 docs/SIMULATOR.md](docs/SIMULATOR.md) |
+| **模型组** | 从已送达观测选一个合法工具；两种规模共用采样与评价接口 | `config/collab-selector.json` | [模型组开工](collab/model/README.md) |
+| **规则组** | 接收快照、权限与预算，返回需变更的业务路径和审计信息 | `config/collab-rules.json` | [规则组开工](collab/rules/README.md) |
+| **知识库组** | 按 ID 或主题返回本版条目，排序可调；OM、规则与模型可各自启用 | `config/collab-rules-knowledge.json` | [知识组开工](collab/knowledge/README.md) |
+| **仿真组** | 通过事件、已送达观测、设备和计量四类公开端口接入分组引擎 | `config/collab-simulator.json` | [仿真组开工](collab/simulator/README.md) |
 | **系统集成组** | OM/RC、A2A、权限目录、方案校验、唯一写入、五指标核验与发版合入 | `config/components.json` | [联调与评分 docs/JOINT_OPTIMIZATION.md](docs/JOINT_OPTIMIZATION.md) |
 
-> **⚠️ 关于“可替换”的客观边界**  
-> 只要遵循接口契约，就能通过 `--components config/xxx.json` 热替换自家组件，无需改动主控和评测链路。  
-> 但这**不代表任意改动模块都能零成本无缝衔接**：例如当前冻结参考模型只见过既有动作目录里的分配算法；若规则组新增了模型从未见过的新算法工具，可以先用 `--policy <新工具号>` 独立测算法收益，若希望模型学会调用它，则需要登记新动作目录并由模型组配合重新训练对齐。
-
+合作方通过 `--components` 指定配置。新算法可先用固定工具 ID 单独评价。要让已训练的模型选择新工具，应登记目录版本与模型映射，再验证该策略。
 ---
 
 ## 三、5 分钟跑通最小闭环

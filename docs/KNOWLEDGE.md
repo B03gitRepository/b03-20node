@@ -1,5 +1,7 @@
 # Read-only technical knowledge
 
+For the v2 contract, runnable example and standalone test, see the [knowledge group kit](../collab/knowledge/README.md). The original plugin registration described below remains available.
+
 The knowledge maintainer publishes a versioned JSON edition. Each entry defines a stable ID, topics, technical content, sources and applicability. The default provider reads edition `1.0.0`. The example provider builds an in-memory index over edition `1.1.0`.
 
 ## Query an edition

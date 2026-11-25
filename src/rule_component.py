@@ -256,7 +256,7 @@ def _check_budget(action, audit, config, *, custom=False):
                                  or limit in search_limits and row[field] > search_limits[limit]):
                 raise ValueError("Reported path search exceeded " + limit)
 
-def verify_patch_receipt(registered, plan, diagnosis, evidence, rec, knowledge):
+def verify_patch_receipt(conditions, registered, plan, diagnosis, evidence, rec, knowledge):
     """Check a sealed patch and its common guards without loading the applicant's code."""
     from rule_patch import V2, limits, materialize
     if not isinstance(rec, dict) or set(rec) != {"schema","input","output","hostConfig","wallNs"} or rec["schema"] != V2:
@@ -277,6 +277,9 @@ def verify_patch_receipt(registered, plan, diagnosis, evidence, rec, knowledge):
             or ("knowledgeContext" in msg) != (knowledge is not None) or msg.get("knowledgeContext") != knowledge
             or type(duration) is not int or duration < 0):
         raise ValueError("Rule receipt changed its work order, snapshot, clock, action or authority")
+    from rule_replay import from_observation, verify_final
+    state = evidence["state"]
+    roles, snapshot, config = from_observation(conditions, state, diagnosis, plan, msg, config)
     opts = registered.get("options", {})
     declared = opts.get("outputBudgets",{}).get(action["budget"],{})
     if msg["budgets"] != limits(config,authority,snapshot,declared):
@@ -293,10 +296,4 @@ def verify_patch_receipt(registered, plan, diagnosis, evidence, rec, knowledge):
         raise ValueError("Replayed rule patch failed the common QoS/capacity checks")
     if audit["ruleTargetHash"] != strong_tools.digest(target):
         raise ValueError("Replayed rule patch target differs")
-    permitted_later = set(audit.get("openingAdmission",{}).get("applied",[])) | set(audit.get("strictPacketQosRejected",[]))
-    for sid in set(plan["authorized"]) - permitted_later:
-        path, decision = target[sid], plan["decisions"][sid]
-        if ((path is None and decision["accepted"]) or
-                (path and decision["accepted"] and (path["nodes"] != decision["node_path"] or
-                 path["linkIds"] != decision["link_path"] or path["allocatedBps"] != decision["wire_bps"]))):
-            raise ValueError("Replayed rule patch differs from final decision")
+    verify_final(conditions, plan, state, msg, roles, snapshot, config, target)

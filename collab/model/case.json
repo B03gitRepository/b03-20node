@@ -80,7 +80,7 @@
       "defaults": [
         0,
         2,
-        "reported_available",
+        "fresh_both_endpoints_up",
         true,
         2900000,
         3.2,
@@ -140,7 +140,7 @@
         0,
         2,
         "data",
-        "unicast",
+        "background",
         2,
         750000,
         0.043,
@@ -207,5 +207,14 @@
     {
       "policyVersion": "example-1"
     }
-  ]
+  ],
+  "invalidExample": {
+    "output": [
+      "outside-catalog",
+      {
+        "policyVersion": "example-1"
+      }
+    ],
+    "error": "Tool ID absent from the delivered legal actions."
+  }
 }

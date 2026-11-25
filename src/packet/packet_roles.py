@@ -436,22 +436,25 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
         timing = {}
         if rules is not None:
             timing["setupWallNs"] = time.perf_counter_ns() - rc_start
-        for port in ("rules","model"):
-            if port == "model" and getattr(chooser, "actor", None) is None:
-                continue
-            record = lookup(components, port, work_id, b["identity"]["sourceSnapshotHash"], state["now_ns"])
-            if record is not None:
-                contexts[port] = record
-        if "rules" in contexts and rules is not None and rules.patch_mode:
-            b["knowledgeContext"] = contexts["rules"]["output"]
+        if (components and getattr(chooser, "actor", None) is not None
+                and accepts_model(components.model, chooser.identity)):
+            advice = lookup(components, "model", work_id, b["identity"]["sourceSnapshotHash"], state["now_ns"])
+            if advice is not None:
+                contexts["model"] = advice
         catalog = (enumerate_actions(model, b["authority"], config) if rules is None
                    else rules.catalog(b, timing))
         offered = tuple(a["id"] for a in catalog) if rules is not None else ()
-        if "model" in contexts and accepts_model(components.model, chooser.identity):
+        if "model" in contexts:
             action, selection = chooser.select(catalog, state, model, ledger, diagnosis, config,
                                                knowledge_context=contexts["model"]["output"])
         else:
             action, selection = chooser.select(catalog, state, model, ledger, diagnosis, config)
+        from knowledge_ports import accepts_rules
+        if components and accepts_rules(components.rules, action["id"]):
+            advice = lookup(components, "rules", work_id, b["identity"]["sourceSnapshotHash"], state["now_ns"])
+            if advice is not None:
+                contexts["rules"] = advice
+                b["knowledgeContext"] = advice["output"]
         if capture:
             capture_start = time.perf_counter_ns()
             sample = begin_sample(chooser, action, catalog, b, chooser.context if rules is None else rules.context)
@@ -483,7 +486,10 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
                                        chooser.initial_admission, action["id"])
             old_target_hash = digest(target)
             prior = deepcopy(target) if knowledge is not None and knowledge["output"] else None
-            target, admission = check_opening(target, model, config, b["authority"], chooser.initial_admission, action["tool"]=="hold_current")
+            patch_request = audit.get("rulePatch", {}).get("input")
+            hold = action["tool"] == "hold_current" or (patch_request is not None and action["scope"]["kind"] in ("retain","current"))
+            target, admission = check_opening(target, model, config, b["authority"], chooser.initial_admission, hold,
+                                              rule_request=patch_request)
             if knowledge is not None:
                 knowledge["procedureCheck"] = check_opening_advice(knowledge, prior, target, model, b["authority"], admission)
             if admission["applied"]:
@@ -516,6 +522,9 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
         if not check["valid"]:
             raise ValueError("Packet QoS guard left an invalid B03 proposal")
         audit.update(check, strictPacketQosRejected=rejected, targetHash=digest(target))
+    if "rulePatch" in audit:
+        from rule_patch import check_final
+        check_final(audit["rulePatch"]["input"], target)
     logical_scope = candidate_scope(b, b, target)
     scope = _device_scope(b, state, target)
     release_ids = [sid for sid in scope["changedServiceIds"] if sid in state["confirmed"]]
@@ -840,7 +849,9 @@ class _PacketAgents:
         diagnosis = _diagnose(state, model, ledger, config, allowed, protected)
         diagnosis["authority_mode"] = "all_arrived_registered" if self.allowed is None else "explicit_whitelist"
         if kind == "control_request":
-            if diagnosis != p["diagnosis"] or not request["parent_message_id"]:
+            received = p.get("om_advisory")
+            expected = diagnosis if received is None else dict(diagnosis, knowledgeContext=received["output"])
+            if expected != p["diagnosis"] or not request["parent_message_id"]:
                 raise ValueError("RC cannot reproduce OM authority on this snapshot")
             result = _resource(wid, state, model, ledger, config, diagnosis, self.policy_hash,
                                self.chooser, p.get("om_advisory"))
@@ -853,7 +864,8 @@ class _PacketAgents:
         from knowledge_ports import lookup
         advisory = lookup(getattr(self.chooser, "components", None), "om", wid, request["snapshot_id"], state["now_ns"])
         if advisory is not None:
-            data["om_advisory"] = advisory
+            diagnosis = dict(diagnosis, knowledgeContext=advisory["output"])
+            data.update(diagnosis=diagnosis, om_advisory=advisory)
         if "reassessment_after_release" in p:
             data["reassessment_after_release"] = p["reassessment_after_release"]
         res, receipt = self.exchange("control_request", wid, request["snapshot_id"], data,
@@ -883,8 +895,6 @@ class _PacketAgents:
                             "observe_message_id": request["message_id"], "release_ids": res["release_ids"],
                             "install_ids": res["install_ids"], "decisions": {sid: res["decisions"][sid] for sid in changed},
                             "old": {sid: state["confirmed"][sid] for sid in res["release_ids"]}}
-        if advisory is not None:
-            diagnosis = dict(diagnosis, knowledgeContext=advisory["output"])
         return dict(res, diagnosis=diagnosis, resource_a2a=receipt)
 
 

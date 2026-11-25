@@ -34,6 +34,7 @@ def main():
     for row in sample["device"]:
         ports.observe("device", row)
     ports.observe("meter", sample["meter"])
+    ports.finish(sample["drainEndNs"])
     print(json.dumps(ports.receipt(), sort_keys=True))
 
 

@@ -1,5 +1,8 @@
 # Run evidence and source verification
 
+Current work orders declare `CONDITIONS.receiptContract = b03.packet.workorder.v2` and seal a `b03.packet.run-files.v2` member index. Archive verification reads recorded contracts and component identities. For a strict replay of an earlier release, use that original checkout, engine and active assets with `run.py verify RUN --strict-source`.
+
+
 `python run.py verify RUN` rechecks the saved work order on the packet clock. It checks the archived file digests, the official scenario and simulator release identity, service permissions, QoS, path activation, per-hop device readback, packet conservation and the U/W integrals. It can run from a later checkout for the same official scenario profile. The model adapter, weight directory and solver wheel can all be absent. Keep the original `RUN_FILES.json` digest with the release record if you need an independent reference for the archive.
 
 ## Inspect a saved run

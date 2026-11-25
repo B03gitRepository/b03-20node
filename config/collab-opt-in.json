@@ -1,0 +1,28 @@
+{
+  "extends": "collab-rules-knowledge.json",
+  "model": {
+    "id": "example.standalone-selector",
+    "version": "1.0.0",
+    "entrypoint": "standalone_selector:build_model",
+    "mode": "frozen",
+    "symbols": [
+      "X"
+    ],
+    "options": {
+      "acceptKnowledge": true
+    }
+  },
+  "knowledge": {
+    "bindings": {
+      "om": {
+        "topic": "detour guidance"
+      },
+      "model": {
+        "topic": "detour guidance"
+      },
+      "rules": {
+        "topic": "detour guidance"
+      }
+    }
+  }
+}

@@ -108,3 +108,11 @@ def materialize(msg, reply):
             or len(set(used)) != len(used) or set(used) - valid_ids):
         raise ValueError("Rule audit cites knowledge outside its delivered context")
     return target
+
+
+def check_final(msg, target):
+    """Apply the same externally observable limits after opening or packet-QoS adjustment."""
+    initial = msg["snapshot"]["assignments"]
+    if set(initial) != set(target):
+        raise ValueError("The final rule proposal changed the roster")
+    materialize(msg, {"patch":{s:path for s,path in target.items() if path != initial[s]}})

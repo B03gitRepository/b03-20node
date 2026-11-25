@@ -34,6 +34,12 @@ def accepts_model(model, policy):
             and model.get("options",{}).get("acceptKnowledge") is True)
 
 
+def accepts_rules(reg, symbol):
+    opts = reg.get("options", {})
+    return (reg.get("contractVersion") == "b03.rules.patch.v2" and opts.get("acceptKnowledge") is True
+            and (symbol in opts.get("customTools", {}) or symbol in opts.get("providedNative", [])))
+
+
 def verify(conditions, events, entries, identity):
     from strong_tools import digest
     bindings = configured(conditions["components"]["knowledge"])
@@ -45,8 +51,9 @@ def verify(conditions, events, entries, identity):
         work, snap = plan["work_id"], plan["snapshot_id"]
         records = plan.get("knowledge_contexts",{})
         choice = plan["tool_choice"]
-        enabled = ({"om"} | ({"rules"} if plan["real_solver_calls"] else set())
-                   | ({"model"} if choice["modelCalled"] else set())) & bindings.keys()
+        rules_port = plan["real_solver_calls"] and accepts_rules(registered, choice["selected"])
+        model_port = choice["modelCalled"] and accepts_model(conditions["components"]["model"],conditions["rcPolicy"])
+        enabled = ({"om"} | ({"rules"} if rules_port else set()) | ({"model"} if model_port else set())) & bindings.keys()
         if not isinstance(records,dict) or set(records) != enabled:
             raise ValueError("A knowledge port receipt is missing or outside its work-order trigger")
         diagnosis = diagnoses[work]
@@ -75,7 +82,7 @@ def verify(conditions, events, entries, identity):
             if ("knowledgeContext" in target) != delivered or delivered and target["knowledgeContext"] != records[port]["output"]:
                 raise ValueError("Consumer context differs from delivered knowledge")
         match_slot(diagnosis, "om", "om" in enabled)
-        match_slot(observation, "model", "model" in enabled and accepts_model(conditions["components"]["model"],conditions["rcPolicy"]))
+        match_slot(observation, "model", "model" in enabled)
         patch = plan.get("solver_audit",{}).get("rulePatch")
         cfg = registered.get("options", {})
         plugin_tools = set(cfg.get("providedNative",[])) | set(cfg.get("customTools",{}))
@@ -85,5 +92,5 @@ def verify(conditions, events, entries, identity):
             raise ValueError("Missing or unexpected rule patch receipt")
         if patch:
             from rule_component import verify_patch_receipt
-            verify_patch_receipt(registered, plan, diagnosis, states[work], patch, records.get("rules",{}).get("output"))
+            verify_patch_receipt(conditions, registered, plan, diagnosis, states[work], patch, records.get("rules",{}).get("output"))
     return proof
