@@ -98,6 +98,24 @@ class BoundaryTests(unittest.TestCase):
         for a, b in itertools.product(rows, repeat=2):
             self.assertEqual((a[0] > b[0], a[0] == b[0]), (a[1] > b[1], a[1] == b[1]))
 
+    def test_large_integer_clocks_replay_t140_returns(self):
+        from packet_learner import unweighted_advantage
+        from packet_training import measured_u
+
+        ns = 2**53 + 3
+        credit = dict(script="04", nodes=100, fromNs=0, toNs=ns,
+                      actualUnmetServiceNs=ns, fixedIUnmetServiceNs=ns + 2,
+                      rawReturnSeconds=-ns / 1e9, fixedIReturnSeconds=-(ns + 2) / 1e9)
+        self.assertEqual(unweighted_advantage(credit), 2 / 1e9)
+        self.assertEqual(formula.ns_to_seconds(ns), ns / 1e9)
+        self.assertEqual(formula.ns_to_ms(ns), ns / 1_000_000)
+        self.assertEqual(formula.archived_ns_to_ms(ns), ns / 1e6)
+        self.assertEqual(formula.seconds_to_ns(ns), round(ns * 1e9))
+        self.assertEqual(formula.ms_to_ns(.0000015), .0000015 * 1_000_000)
+        self.assertEqual(formula.seconds_to_us(12), 12_000_000)
+        self.assertEqual(measured_u([dict(start_ns=0, end_ns=ns, unmet=["a","b"])], 1, ns), (ns-1)*2)
+        self.assertEqual(math.copysign(1, formula.ns_to_seconds(-0)), 1)
+
     def test_time_fractions_and_priority_loss(self):
         valid = [formula.time_fraction(4, None), formula.time_fraction(3, 1), formula.time_fraction(1, 0)]
         self.assertEqual(formula.ratio(sum(v for v, _ in valid), sum(t for _, t in valid)), .75)

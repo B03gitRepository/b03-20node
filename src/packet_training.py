@@ -52,7 +52,7 @@ def business_ledger(directory):
 
 
 def measured_u(rows, start, end):
-    return sum((min(row["end_ns"], end) - max(row["start_ns"], start)) * len(row["unmet"])
+    return sum(formula.service_ns(min(row["end_ns"], end) - max(row["start_ns"], start), len(row["unmet"]))
                for row in rows if row["end_ns"] > start and row["start_ns"] < end)
 
 
@@ -84,7 +84,7 @@ def samples_from_work_orders(actual, control, report):
         own_ns, fixed_ns = measured_u(rows, at, end), measured_u(control_rows, at, end)
         credit = {"nodes": a["nodeCount"], "script": a["script"], "fromNs": at, "toNs": end,
                   "actualUnmetServiceNs": own_ns, "fixedIUnmetServiceNs": fixed_ns,
-                  "rawReturnSeconds": -formula.ns_to_seconds(own_ns), "fixedIReturnSeconds": -formula.ns_to_seconds(fixed_ns)}
+                  "rawReturnSeconds": formula.ns_to_seconds(-own_ns), "fixedIReturnSeconds": formula.ns_to_seconds(-fixed_ns)}
         unweighted_advantage(credit)
         samples.append((choice, credit))
     if not samples:

@@ -1,6 +1,8 @@
 """Apply explicitly scheduled demand ends to the native packet traffic batches."""
 from dataclasses import replace
 
+import b03_formulas as formula
+
 
 def parse_service_ends(values, specs, selected, start, end):
     ends = {}
@@ -12,7 +14,7 @@ def parse_service_ends(values, specs, selected, start, end):
             second = int(raw)
         except ValueError as exc:
             raise ValueError("Service end must be an integer simulation second") from exc
-        if not start < second < end or second * 1_000_000 <= specs[sid].registered_at_us:
+        if not start < second < end or formula.seconds_to_us(second) <= specs[sid].registered_at_us:
             raise ValueError("Service end must follow registration and fall inside the scored window")
         ends[sid] = second
     return ends
@@ -22,7 +24,7 @@ def with_service_ends(scenario, ends):
     """Use a native traffic_set. Demand reports, reservations, commands and queues are handled by the simulator."""
     if not ends:
         return scenario
-    deadlines = {sid: sec * 1_000_000 for sid, sec in ends.items()}
+    deadlines = {sid: formula.seconds_to_us(sec) for sid, sec in ends.items()}
     batches = {b.time_us: b for b in scenario.batches}
     times = sorted(set(batches) | set(deadlines.values()))
     services = (*scenario.services, *scenario.added_services)

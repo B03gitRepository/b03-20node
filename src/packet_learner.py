@@ -140,8 +140,8 @@ def unweighted_advantage(credit):
             raise ValueError("Unweighted packet credit must use measured nonnegative integers")
     if credit["fromNs"] >= credit["toNs"]:
         raise ValueError("Credit must follow the sampled decision within the scored window")
-    raw = -formula.ns_to_seconds(credit["actualUnmetServiceNs"])
-    control = -formula.ns_to_seconds(credit["fixedIUnmetServiceNs"])
+    raw = formula.ns_to_seconds(-credit["actualUnmetServiceNs"])
+    control = formula.ns_to_seconds(-credit["fixedIUnmetServiceNs"])
     if credit.get("rawReturnSeconds") != raw or credit.get("fixedIReturnSeconds") != control:
         raise ValueError("Stored U returns differ from the measured service clock")
     return formula.ns_to_seconds(credit["fixedIUnmetServiceNs"] - credit["actualUnmetServiceNs"])

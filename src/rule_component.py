@@ -2,6 +2,7 @@
 from copy import deepcopy
 from time import perf_counter_ns
 
+import b03_formulas as formula
 import strong_tools
 from b03.solver import active_requests
 
@@ -178,7 +179,7 @@ class CheckedRules:
             reply = self.implementation.solve_action(detached)
             duration = perf_counter_ns() - called_provider
             limit_ms = req["budgets"].get("maxSolverWallMs")
-            if limit_ms is not None and duration > limit_ms * 1_000_000:
+            if limit_ms is not None and duration > formula.ms_to_ns(limit_ms):
                 raise ValueError("Rule solver exceeded the measured work-order deadline")
             target = materialize(req, reply)
             value = bind_proposal(action, bound, target, {"solverStatus":"external_patch", "globallyOptimal":False,
@@ -284,7 +285,7 @@ def verify_patch_receipt(conditions, registered, plan, diagnosis, evidence, rec,
     declared = opts.get("outputBudgets",{}).get(action["budget"],{})
     if msg["budgets"] != limits(config,authority,snapshot,declared):
         raise ValueError("The rule input changed its work-order budgets")
-    if "maxSolverWallMs" in declared and duration > declared["maxSolverWallMs"] * 1_000_000:
+    if "maxSolverWallMs" in declared and duration > formula.ms_to_ns(declared["maxSolverWallMs"]):
         raise ValueError("Sealed rule exceeded its measured deadline")
     native = {a["id"]:a for a in strong_tools.enumerate_actions(snapshot,authority,config)}
     from rule_patch import catalog

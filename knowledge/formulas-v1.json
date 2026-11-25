@@ -8,13 +8,15 @@
       "units": [
         "s",
         "ms",
+        "µs",
         "ns"
       ],
       "parameters": {
         "millisecondsPerSecond": 1000,
-        "nanosecondsPerMillisecond": 1000000
+        "nanosecondsPerMillisecond": 1000000,
+        "microsecondsPerMillisecond": 1000
       },
-      "content": "秒、毫秒和纳秒按十进制换算。事件秒转整数纳秒按最近值取整，半值取偶。",
+      "content": "秒、毫秒和纳秒按十进制换算。事件秒转整数纳秒按最近值取整，半值取偶。 业务秒和归档探针的毫秒沿用浮点除数，规则输入的毫秒沿用整数除数。超过双精度整数连续表示范围时，按原操作顺序取舍。",
       "applicability": "所有仿真时钟、规则输入和评价输出。",
       "topics": [
         "单位",

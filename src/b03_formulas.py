@@ -13,7 +13,7 @@ from pathlib import Path
 import sys
 
 EDITION_PATH = Path(__file__).resolve().parents[1] / "knowledge" / "formulas-v1.json"
-EDITION_SHA256 = "70870015f5ba084b6a159c5fb46e3995a6562452c97fd120157fbfdc737576fa"
+EDITION_SHA256 = "fad8b55af0b5a53e1887e8cd1acc45db0098d91ffe791fabf78db9eaf88575d4"
 EDITION_VERSION = "1.0.0"
 MEMBER = "formula-edition.json"
 IMPLEMENTATION = "src/b03_formulas.py"
@@ -53,8 +53,11 @@ def _params(identifier):
 
 
 MS_PER_S = _params("time.units")["millisecondsPerSecond"]
+US_PER_MS = _params("time.units")["microsecondsPerMillisecond"]
 NS_PER_MS = _params("time.units")["nanosecondsPerMillisecond"]
 NS_PER_S = NS_PER_MS * MS_PER_S
+FLOAT_NS_PER_S = float(NS_PER_S)
+FLOAT_NS_PER_MS = float(NS_PER_MS)
 PAYLOAD_BYTES = _params("packet.wire-rate")["payloadBytes"]
 EPOCH_BYTES = _params("packet.wire-rate")["epochBytes"]
 TRANSPORT_BYTES = _params("packet.wire-rate")["transportBytes"]
@@ -76,8 +79,21 @@ def ns_to_ms(ns):
     return ns / NS_PER_MS
 
 
+def archived_ns_to_ms(ns):
+    # The packet verifier historically converted the numerator to binary64.
+    return ns / FLOAT_NS_PER_MS
+
+
 def ns_to_seconds(ns):
-    return ns / NS_PER_S
+    return ns / FLOAT_NS_PER_S
+
+
+def ms_to_ns(milliseconds):
+    return milliseconds * NS_PER_MS
+
+
+def seconds_to_us(seconds):
+    return seconds * (MS_PER_S * US_PER_MS)
 
 
 def seconds_to_ms(seconds):
@@ -85,7 +101,7 @@ def seconds_to_ms(seconds):
 
 
 def seconds_to_ns(seconds):
-    return round(seconds * NS_PER_S)
+    return round(seconds * FLOAT_NS_PER_S)
 
 
 def wire_bps(payload_bps, payload_bytes=PAYLOAD_BYTES, epoch_overhead_bytes=EPOCH_BYTES):

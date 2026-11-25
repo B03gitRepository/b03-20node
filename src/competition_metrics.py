@@ -35,7 +35,7 @@ def requested_fields_match(attrs, actual, fields):
     return checked > 0
 
 
-LINK_FIELDS = {"delayMs": ("delay_ns", formula.NS_PER_MS), "jitterMs": ("jitter_ns", formula.NS_PER_MS),
+LINK_FIELDS = {"delayMs": ("delay_ns", formula.FLOAT_NS_PER_MS), "jitterMs": ("jitter_ns", formula.FLOAT_NS_PER_MS),
                "bandwidthBps": ("capacity_bps", 1), "ber": ("ber", 1),
                "packetLossRate": ("packet_loss_rate", 1)}
 SERVICE_FIELDS = {"delayMs": ("delay_limit_s", 1 / formula.MS_PER_S), "jitterMs": ("jitter_limit_s", 1 / formula.MS_PER_S),

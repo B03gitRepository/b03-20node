@@ -76,8 +76,8 @@ def sample_graph(endpoints, latest, stamp, ttl):
             continue
         left,right = [v[0]["link"] for v in pair]
         merged = formula.fuse_endpoints(left, right)
-        graph[lid] = {"ends":(a,b), "capacity":merged["capacity_bps"], "delay":formula.ns_to_ms(merged["delay_ns"]),
-                      "jitter":formula.ns_to_ms(merged["jitter_ns"]), "loss":merged["packet_loss_rate"], "ber":merged["ber"]}
+        graph[lid] = {"ends":(a,b), "capacity":merged["capacity_bps"], "delay":formula.archived_ns_to_ms(merged["delay_ns"]),
+                      "jitter":formula.archived_ns_to_ms(merged["jitter_ns"]), "loss":merged["packet_loss_rate"], "ber":merged["ber"]}
     return graph
 
 
