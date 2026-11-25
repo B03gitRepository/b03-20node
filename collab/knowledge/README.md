@@ -1,10 +1,30 @@
 # 知识库组 · 版本化只读检索与多入口挂载接口
 
-## 一、模块职责
+## 一、模块职责与接口定位
 
 知识库组负责提供版本化、只读的技术知识检索组件（契约版本 `b03.knowledge.lookup.v2`）。组件基于锁定的知识版实现按编号精确查找或按主题自主召回与排序；宿主按配置将检索结果组装后注入 OM、规则或模型环节，知识条目不改变写权限或原始 QoS 需求。
 
 此外，链路共用的底层计算口径单独维护在[底层计算公式知识版](../../knowledge/formulas-v1.json)中（见第三节第 3 点），便于统一核查与全链路直接调用。
+
+### 当前实际启用状态与能力边界
+
+为方便知识库组判断新想法是否可直接基于现有接口落地、还是需要联系系统集成组扩展接口，当前边界明确如下：
+
+- **默认配置（`config/components.json`）下的真实启用状态**：
+  - 业务知识检索中，目前**只有“按编号精确查找”在首张授权工单后实际触发一次**（固定查询 `K044` 用于首单残余准入核查）；
+  - **“按主题召回与排序”与三个接入环节（`om`、`rules`、`model`）在默认运行中均未开启**；仓内仅在示例配置 `config/collab-rules-knowledge.json` 的 `rules` 环节用主题 `"detour guidance"` 示范了路径排序提示（`EX.PATH.DELAY` / `EX.PATH.HOPS`）。
+  - 换言之，当前先以统一接口和核验骨架为主；各组明确具体业务知识需求后，若超出下表现有范围，再由系统集成组协同扩展接口。
+
+| 分类 | 具体能力 | 说明 |
+|---|---|---|
+| **现有接口可直接支持**（无需改主控接口，现在即可开发与对比） | 扩充文本类技术/运维/策略知识库 | 新增或升级 `b03.knowledge.v1` 知识版 JSON（每条含 6 个固定字段） |
+| **现有接口可直接支持** | 替换检索与排序算法 | 在 `lookup` 中自研关键词、向量检索、重排或外部检索服务，返回排序后的本版 ID 列表 |
+| **现有接口可直接支持** | 按固定主题/编号定点注入 | 通过 `knowledge.bindings` 将固定查询结果注入 `om`、`rules` 或 `model`（下游插件开启 `acceptKnowledge: true` 即可读取） |
+| **现有接口可直接支持** | 核查与对齐底层计算公式 | 查阅并核对 `knowledge/formulas-v1.json` 中的 11 项默认计算口径 |
+| **超出当前范围**（需求明确后需找系统集成组扩接口） | 按当前工单故障/拓扑动态查询 | 当前 `lookup` 仅接收配置文件写死的单个 `topic` 或 `identifier`，不传入实时网络状态或告警上下文 |
+| **超出当前范围** | 智能体自主决定何时查、查什么 | 当前由宿主按配置在固定时机注入，尚不支持 OM 或模型在决策过程中自主发起多轮提问 |
+| **超出当前范围** | 透传结构化数值/特征/权重载荷 | 当前业务知识条目仅保留 6 个文本/列表字段，自定义扩展字段在加载时会被过滤 |
+| **长期架构底线**（不开放） | 改写写权限、原始 QoS 或强制下发 | 知识库始终为只读参考，不参与写权限签发与设备直接写入 |
 
 ---
 
@@ -44,22 +64,20 @@ build_knowledge(*, config, library) -> provider
 
 每次调用 `identifier` 与 `topic` 严格二选一（传入非空字符串，另一参数为 `None`）：
 
-| 查询分支 | 输入参数 | 组件返回值要求 | 宿主组装与交付内容 |
-|---|---|---|---|
-| **分支 A：按编号精确查找** | `identifier="<ID>"`, `topic=None` | 本版存在该编号时返回 `[identifier]`，否则返回 `[]` | 返回对应单条 6 字段条目（含 `id`、`topics`、`content`、`sources`、`applicability`、`version`）；知识版摘要记录于工单回执 `knowledge_contexts[port].component.sourceSha256` |
-| **分支 B：按主题召回与排序** | `identifier=None`, `topic="<查询词>"` | 自主召回并排序后的本版唯一 ID 列表（允许 `[]`；可接入关键词、向量检索或外部服务） | 严格按返回 ID 顺序组装同版 6 字段条目（含 `version`）；知识版摘要记录于工单回执 `knowledge_contexts[port].component.sourceSha256` |
+| 查询分支 | 输入参数 | 组件返回值要求 | 宿主组装与交付内容 | 当前应用状态 |
+|---|---|---|---|---|
+| **分支 A：按编号精确查找** | `identifier="<ID>"`, `topic=None` | 本版存在该编号时返回 `[identifier]`，否则返回 `[]` | 返回对应单条 6 字段条目（含 `id`、`topics`、`content`、`sources`、`applicability`、`version`）；知识版摘要记录于工单回执 `knowledge_contexts[port].component.sourceSha256` | 默认运行仅在首单残余准入核查时点名查询一次 `K044` |
+| **分支 B：按主题召回与排序** | `identifier=None`, `topic="<查询词>"` | 自主召回并排序后的本版唯一 ID 列表（允许 `[]`；可接入关键词、向量检索或外部服务） | 严格按返回 ID 顺序组装同版 6 字段条目（含 `version`）；知识版摘要记录于工单回执 `knowledge_contexts[port].component.sourceSha256` | 默认运行未启用；仅在示例配置 `collab-rules-knowledge.json` 中用于演示路径排序 |
 
 ### 2. 三个接入环节挂载规则（`knowledge.bindings`）
 
 通过配置中的 `knowledge.bindings` 分别声明 `om`、`rules`、`model` 入口，每项填写 `{"topic": "<查询词>"}` 或 `{"identifier": "<条目ID>"}`。关闭单个入口须直接省略该键（填入 `{}` 或 `null` 均会报错）；关闭全部入口可配置 `"bindings": {}`，未启用入口沿用既有流程：
 
-| 接入环节 | 触发时机 | 注入位置 | 接入方前置开关与边界 |
-|---|---|---|---|
-| `om` | OM 完成权限诊断后、将工单交给 RC 前 | `diagnosis.knowledgeContext` | 配置 `knowledge.bindings.om` 即注入；授权范围与原始 QoS 仍按已送达观测独立计算 |
-| `rules` | 规则求解调用 `solve_action` 前 | `request["knowledgeContext"]` | 所选工具由 v2 规则插件处理且声明 `rules.options.acceptKnowledge: true` |
-| `model` | RC 构造模型因果观测时 | `observation["knowledgeContext"]` | 模型插件须显式声明 `model.options.acceptKnowledge: true`；内置冻结模型保持原始输入不变 |
-
-**当前启用状态说明**：默认配置（`config/components.json`）下上述三个接入环节均未开启；仓内仅在示例配置 `config/collab-rules-knowledge.json` 中用 `rules` 环节示范了路径排序提示（`EX.PATH.DELAY` / `EX.PATH.HOPS`），`om` 与 `model` 环节已打通接口与核验但尚未内置具体业务知识，后续可根据各组明确的需求补充内容或扩展接口。
+| 接入环节 | 触发时机 | 注入位置 | 接入方前置开关与边界 | 当前内容状态 |
+|---|---|---|---|---|
+| `om` | OM 完成权限诊断后、将工单交给 RC 前 | `diagnosis.knowledgeContext` | 配置 `knowledge.bindings.om` 即注入；授权范围与原始 QoS 仍按已送达观测独立计算 | 默认未开启；接口与核验已通，暂无内置业务条目 |
+| `rules` | 规则求解调用 `solve_action` 前 | `request["knowledgeContext"]` | 所选工具由 v2 规则插件处理且声明 `rules.options.acceptKnowledge: true` | 默认未开启；示例配置含 `EX.PATH.DELAY` / `EX.PATH.HOPS` 排序演示 |
+| `model` | RC 构造模型因果观测时 | `observation["knowledgeContext"]` | 模型插件须显式声明 `model.options.acceptKnowledge: true`；内置冻结模型保持原始输入不变 | 默认未开启；接口与核验已通，暂无内置业务条目 |
 
 各入口的查询请求、排序结果、知识版来源、绑定快照与耗时记录在工单 `knowledge_contexts` 中；首单残余准入核查（`K044`）继续保留独立记录 `knowledge_io`。离线 `run.py verify` 会按归档知识版逐项复核条目内容、授权快照与注入位置。
 
