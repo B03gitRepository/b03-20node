@@ -9,6 +9,7 @@ from decimal import Decimal
 import hashlib
 import json
 import math
+from operator import itemgetter
 from pathlib import Path
 import sys
 
@@ -112,15 +113,21 @@ def wire_bps(payload_bps, payload_bytes=PAYLOAD_BYTES, epoch_overhead_bytes=EPOC
     return (payload_bps * size + payload_bytes - 1) // payload_bytes
 
 
+_delay = itemgetter("delayMs")
+_bit_error = itemgetter("ber")
+_bandwidth = itemgetter("bandwidthBps")
+
+
 def path_metrics(parts):
     """B03 proposal metrics, using the rule edition’s capped BER."""
-    parts = list(parts)
-    ber = sum(p["ber"] for p in parts)
-    return {"delayMs":sum(p["delayMs"] for p in parts),
+    if not isinstance(parts, (list, tuple)):
+        parts = list(parts)
+    ber = sum(map(_bit_error, parts))
+    return {"delayMs":sum(map(_delay, parts)),
             "jitterMs":math.sqrt(sum(p["jitterMs"]**2 for p in parts)),
             "ber":min(BER_CEILING, ber),
             "packetLossRate":1.0 - math.prod(1.0-p["packetLossRate"] for p in parts),
-            "bottleneckBps":min((p["bandwidthBps"] for p in parts), default=None)}
+            "bottleneckBps":min(map(_bandwidth, parts), default=None)}
 
 
 def packet_quality(service, path_links, links, *, qos_profile):

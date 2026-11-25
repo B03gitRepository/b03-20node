@@ -27,7 +27,7 @@ def usable(nodes, link):
 
 
 def path_metrics(links, path):
-    return formula.path_metrics(links[lid]['params'] for lid in path['linkIds'])
+    return formula.path_metrics([links[lid]['params'] for lid in path['linkIds']])
 
 
 def path_errors(nodes, links, request, path):
