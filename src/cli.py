@@ -178,6 +178,8 @@ def main(argv=None, *, on_policy_ready=None):
                                policy=args.policy if args.mode == "workorder" else args.mode,
                                policy_identity=chooser.identity if chooser else None)
     implementation = source_identity()
+    from integrity import contract_for_mode
+    identity["receiptContract"] = contract_for_mode(args.mode)
     json_file(out / "CONDITIONS.json", {**identity, "provenance": proof, "implementationSha256": implementation, "mode": args.mode, "dropInstallAckAtDestination": args.drop_install_ack,
                                        "python": sys.version, "packages": pyenv})
     with ExitStack() as stack:

@@ -1,0 +1,14 @@
+{
+  "extends": "components.json",
+  "model": {
+    "id": "example.standalone-selector",
+    "version": "1.0.0",
+    "entrypoint": "standalone_selector:build_model",
+    "mode": "frozen",
+    "symbols": [
+      "A",
+      "B",
+      "C"
+    ]
+  }
+}

@@ -1,0 +1,211 @@
+{
+  "observation": {
+    "schema": "b03.packet.rc-choice.v1",
+    "timeNs": 1337000000,
+    "legalActions": [
+      "A",
+      "B",
+      "C"
+    ],
+    "actionCatalog": {
+      "A": {
+        "tool": "hold_current",
+        "scope": "current",
+        "serviceSet": 0,
+        "pool": "none",
+        "budget": "none",
+        "stage": "retain"
+      },
+      "B": {
+        "tool": "priority_greedy",
+        "scope": "authorized_failed",
+        "serviceSet": 1,
+        "pool": "historical",
+        "budget": "historical",
+        "stage": "repair"
+      },
+      "C": {
+        "tool": "bounded_search",
+        "scope": "authorized_failed",
+        "serviceSet": 1,
+        "pool": "historical",
+        "budget": "historical",
+        "stage": "repair"
+      }
+    },
+    "authorizedServiceSets": [
+      [],
+      [
+        1
+      ]
+    ],
+    "nodes": {
+      "columns": [
+        "id",
+        "online"
+      ],
+      "defaults": [
+        true
+      ],
+      "rows": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ]
+    },
+    "links": {
+      "columns": [
+        "id",
+        "src",
+        "dst",
+        "observedStatus",
+        "usable",
+        "availableWireBps",
+        "delayMs",
+        "jitterMs",
+        "ber",
+        "loss",
+        "observedCapacityBps",
+        "heldWireBps"
+      ],
+      "defaults": [
+        0,
+        2,
+        "reported_available",
+        true,
+        2900000,
+        3.2,
+        0.36,
+        1e-09,
+        0.00011,
+        1600000,
+        0
+      ],
+      "rows": [
+        [
+          0,
+          625,
+          1,
+          3300000,
+          4,
+          0.45,
+          3300000
+        ],
+        [
+          1,
+          514,
+          1,
+          2900000
+        ],
+        [
+          2,
+          1136,
+          844000,
+          6.2,
+          0.64,
+          756000
+        ]
+      ]
+    },
+    "services": {
+      "columns": [
+        "id",
+        "src",
+        "dst",
+        "type",
+        "category",
+        "priority",
+        "payloadBps",
+        "maxDelayS",
+        "maxJitterS",
+        "maxBer",
+        "maxLoss",
+        "fresh",
+        "active",
+        "revision",
+        "diagnosis",
+        "writable",
+        "protected"
+      ],
+      "defaults": [
+        0,
+        2,
+        "data",
+        "unicast",
+        2,
+        750000,
+        0.043,
+        0.0037,
+        1e-06,
+        0.009,
+        true,
+        true,
+        1,
+        "configuration_qos_passed",
+        false,
+        false
+      ],
+      "rows": [
+        [
+          0,
+          32768,
+          true
+        ],
+        [
+          1,
+          24624,
+          3,
+          930000,
+          "observed_pending_admission",
+          true
+        ]
+      ]
+    },
+    "configs": {
+      "columns": [
+        "service",
+        "links",
+        "payloadBps",
+        "wireBps",
+        "epoch",
+        "verified"
+      ],
+      "defaults": [
+        [
+          2
+        ],
+        750000,
+        756000,
+        1,
+        true
+      ],
+      "rows": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    "budgets": {
+      "path_limit": 3,
+      "path_expansion_budget": 53,
+      "search_budget": 37,
+      "search_service_limit": 2
+    }
+  },
+  "expected": [
+    "B",
+    {
+      "policyVersion": "example-1"
+    }
+  ]
+}

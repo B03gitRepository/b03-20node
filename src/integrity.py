@@ -17,20 +17,37 @@ def source_identity():
     """Preserve the full historical checkout inventory for earlier tools and recovery."""
     paths = [ROOT / "run.py", *(ROOT / "config").glob("*.json"),
              *(ROOT / "knowledge").glob("*.json"), *(ROOT / "src").rglob("*.py")]
+    if (ROOT / "episode.py").is_file():
+        paths.append(ROOT / "episode.py")
     if (ROOT / "train.py").is_file():
         paths.append(ROOT / "train.py")
     return {p.relative_to(ROOT).as_posix(): sha256(p) for p in sorted(paths)}
 
 
+def contract_for_mode(mode):
+    return "b03.packet.workorder.v2" if mode == "workorder" else "b03.packet.run.v2"
+
+
+def receipt_format(conditions):
+    if "receiptContract" not in conditions:
+        if "src/episode_contract.py" in conditions.get("implementationSha256", {}):
+            raise ValueError("Receipt from a v2 producer has no contract marker")
+        return "b03.packet.run-files.v1"
+    if conditions["receiptContract"] != contract_for_mode(conditions.get("mode")):
+        raise ValueError("Unsupported contract for this receipt mode")
+    return "b03.packet.run-files.v2"
+
+
 def seal(run):
     files = {p.relative_to(run).as_posix(): {"bytes": p.stat().st_size, "sha256": sha256(p)}
              for p in sorted(run.rglob("*")) if p.is_file()}
-    write_json(run / "RUN_FILES.json", {"schema": "b03.packet.run-files.v1", "files": files})
+    conditions = json.loads((run / "CONDITIONS.json").read_bytes())
+    write_json(run / "RUN_FILES.json", {"schema": receipt_format(conditions), "files": files})
 
 
 def check_members(run, conditions):
     record = json.loads((run / "RUN_FILES.json").read_bytes())
-    if record.get("schema") != "b03.packet.run-files.v1":
+    if record.get("schema") != receipt_format(conditions):
         raise ValueError("Unknown packet evidence schema")
     files = record["files"]
     required = {"CONDITIONS.json", "SUMMARY.json", "b03.jsonl", "business-intervals.jsonl",
@@ -201,7 +218,8 @@ def check_archive(run, conditions, *, strict_source=False, components=None, chec
             if len(differences) > 30:
                 message += f"\n… and {len(differences) - 30} further differences"
             raise ValueError("Strict source verification failed. Use the original checkout and environment.\n" + message)
-    return {"mode": "strict-source" if strict_source else "archive", "archiveIndexSha256": sha256(run / "RUN_FILES.json"),
+    return {"mode": "strict-source" if strict_source else "archive",
+            "receiptContract": conditions.get("receiptContract", "legacy-v1"), "archiveIndexSha256": sha256(run / "RUN_FILES.json"),
             "provenanceSchema": proof["schema"] if proof else "legacy", "sourceCompared": strict_source,
             "simulatorCheck": simulator_check, "recordedGitCommit": proof.get("gitCommit") if proof else None,
             "checkoutGitCommit": revision(ROOT) if strict_source else None}

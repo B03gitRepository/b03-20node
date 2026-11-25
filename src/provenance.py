@@ -415,6 +415,8 @@ def provider_records(root, components, policy, distributions, requested):
 def checkout_files(root, native):
     paths = [root / "run.py", root / "config/profile.json", root / "config/simulator.lock.json",
              root / "requirements.txt"]
+    if (root / "episode.py").is_file():
+        paths.append(root / "episode.py")
     if (root / "train.py").is_file():
         paths.append(root / "train.py")
     if native:

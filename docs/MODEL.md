@@ -1,5 +1,7 @@
 # Model adapters
 
+Start with the [standalone adapter kit and episode API](../collab/model/README.md).
+
 `choose(observation)` receives the delivered OM/RC packet observation, schema `b03.packet.rc-choice.v1`. Its `legalActions` are the configured model symbols authorized for this work order. Each `actionCatalog` entry gives the tool, scope, service-set reference, pool, budget and stage. The other tables carry reported topology, measurements, demands and confirmed configurations.
 
 ## Adapter interface
