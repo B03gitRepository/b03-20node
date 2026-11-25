@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import b03_formulas as formula
 import json
 import math
 import os
@@ -44,7 +45,7 @@ def business_ledger(directory):
     for row in rows:
         left, right = row["start_ns"], row["end_ns"]
         if (left != previous_end or right < left or
-                row["U_service_ns"] != (right - left) * len(row["unmet"])):
+                row["U_service_ns"] != formula.service_ns(right - left, len(row["unmet"]))):
             raise ValueError("The measured unweighted service clock is inconsistent")
         previous_end = right
     return rows
@@ -67,7 +68,7 @@ def samples_from_work_orders(actual, control, report):
     rows, control_rows = (business_ledger(d) for d in (actual, control))
     start, end = rows[0]["start_ns"], rows[-1]["end_ns"]
     if ((start, end) != (control_rows[0]["start_ns"], control_rows[-1]["end_ns"])
-            or not math.isclose(measured_u(rows, start, end) / 1e9, report["business"]["U"],
+            or not math.isclose(formula.ns_to_seconds(measured_u(rows, start, end)), report["business"]["U"],
                                 rel_tol=0, abs_tol=1e-8)):
         raise ValueError("Credit windows and the verified unweighted U account must agree")
     decisions = [r["tool_choice"] for r in json_lines(actual / "b03.jsonl")
@@ -83,7 +84,7 @@ def samples_from_work_orders(actual, control, report):
         own_ns, fixed_ns = measured_u(rows, at, end), measured_u(control_rows, at, end)
         credit = {"nodes": a["nodeCount"], "script": a["script"], "fromNs": at, "toNs": end,
                   "actualUnmetServiceNs": own_ns, "fixedIUnmetServiceNs": fixed_ns,
-                  "rawReturnSeconds": -own_ns / 1e9, "fixedIReturnSeconds": -fixed_ns / 1e9}
+                  "rawReturnSeconds": -formula.ns_to_seconds(own_ns), "fixedIReturnSeconds": -formula.ns_to_seconds(fixed_ns)}
         unweighted_advantage(credit)
         samples.append((choice, credit))
     if not samples:

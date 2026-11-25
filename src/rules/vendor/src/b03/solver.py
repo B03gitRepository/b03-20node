@@ -6,11 +6,12 @@ QoS is an explicit flow-level development model, not packet simulation.
 from __future__ import annotations
 
 import copy
+import b03_formulas as formula
 import heapq
 import math
 
 QOS = ('delayMs', 'jitterMs', 'ber', 'packetLossRate')
-EPS = 1e-12
+EPS = formula.EPS
 
 
 def active_requests(requests, now):
@@ -26,12 +27,7 @@ def usable(nodes, link):
 
 
 def path_metrics(links, path):
-    ps = [links[lid]['params'] for lid in path['linkIds']]
-    return {'delayMs': sum(p['delayMs'] for p in ps),
-            'jitterMs': math.sqrt(sum(p['jitterMs']**2 for p in ps)),
-            'ber': min(1.0, sum(p['ber'] for p in ps)),
-            'packetLossRate': 1.0 - math.prod(1.0-p['packetLossRate'] for p in ps),
-            'bottleneckBps': min((p['bandwidthBps'] for p in ps), default=None)}
+    return formula.path_metrics(links[lid]['params'] for lid in path['linkIds'])
 
 
 def path_errors(nodes, links, request, path):
@@ -65,7 +61,7 @@ def assess(nodes, links, requests, assignments, now):
     active = active_requests(requests, now)
     load = loads(links, assignments)
     caps = {lid: l['params']['bandwidthBps'] if usable(nodes,l) else 0 for lid,l in links.items()}
-    overload = {lid for lid in links if load[lid] > caps[lid]+EPS}
+    overload = {lid for lid in links if not formula.within_capacity(load[lid], caps[lid], EPS)}
     details = {}
     for sid, req in sorted(active.items()):
         a = assignments.get(sid)
@@ -90,7 +86,7 @@ def assess(nodes, links, requests, assignments, now):
                 seen.add(other); pending.append(other)
         reach[n] = seen
     online = [n for n in nodes if nodes[n].get('_online',False)]
-    pair_den = len(online)*(len(online)-1)
+    pair_den = formula.online_pair_count(len(online))
     reachable = sum(r['dstNodeId'] in reach.get(r['srcNodeId'],set()) for r in active.values())
     good = [sid for sid,d in details.items() if d['satisfied']]
     total_weight = sum(r['priority'] for r in active.values())
@@ -99,10 +95,10 @@ def assess(nodes, links, requests, assignments, now):
             'priorityWeightTotal':total_weight,
             'satisfiedPriorityWeight':sum(active[s]['priority'] for s in good),
             'onlineNodeCount':len(online), 'onlineNodePairDenominator':pair_den,
-            'onlineNodePairConnectedFraction':sum(len(reach[n])-1 for n in online)/pair_den if pair_den else None,
+            'onlineNodePairConnectedFraction':formula.ratio(sum(len(reach[n])-1 for n in online),pair_den),
             'originalActiveEndpointDenominator':len(active),
             'originalActiveEndpointReachableCount':reachable,
-            'originalActiveEndpointReachableFraction':reachable/len(active) if active else None,
+            'originalActiveEndpointReachableFraction':formula.ratio(reachable,len(active)),
             'overloadedLinkIds':sorted(overload), 'linkLoadsBps':load,
             'services':details}
 
@@ -114,7 +110,7 @@ def candidate_paths(nodes, links, request, config):
         return [], {'expanded':0,'termination':'endpoint_unavailable','complete':True}
     adjacency={n:[] for n in nodes}
     for lid,l in sorted(links.items()):
-        if usable(nodes,l) and l['params']['bandwidthBps']+EPS>=request['requirement']['bandwidthBps']:
+        if usable(nodes,l) and formula.within_capacity(request['requirement']['bandwidthBps'], l['params']['bandwidthBps'], EPS):
             a,b=l['srcNodeId'],l['dstNodeId']; adjacency[a].append((b,lid)); adjacency[b].append((a,lid))
     heap=[(0.0,(),(src,))]; found=[]; expanded=0
     hop_limit=config.get('max_path_hops') or max(0,len(nodes)-1)
@@ -134,8 +130,7 @@ def candidate_paths(nodes, links, request, config):
 
 
 def objective(requests, target, current):
-    levels=sorted({r['priority'] for r in requests.values()}, reverse=True)
-    return tuple(sum(target.get(sid) is not None for sid,r in requests.items() if r['priority']==p) for p in levels) + (-sum(current.get(sid)!=target.get(sid) for sid in set(current)|set(target)),)
+    return formula.priority_objective(requests, target, current)
 
 
 def solve(nodes, links, requests, current, now, config, method='priority_greedy', initialize=False, *, writable_service_ids=None):
@@ -157,7 +152,7 @@ def solve(nodes, links, requests, current, now, config, method='priority_greedy'
     load=loads(links,target)
     capacity={lid:l['params']['bandwidthBps'] if usable(nodes,l) else 0 for lid,l in links.items()}
     def fits(path,occupancy):
-        return all(occupancy[lid]+path['allocatedBps']<=capacity[lid]+EPS for lid in path['linkIds'])
+        return all(formula.within_capacity(occupancy[lid]+path['allocatedBps'], capacity[lid], EPS) for lid in path['linkIds'])
     def add(path,occupancy,sign):
         for lid in path['linkIds']: occupancy[lid]+=sign*path['allocatedBps']
     for sid in work:

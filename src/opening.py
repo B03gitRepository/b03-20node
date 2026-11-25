@@ -1,4 +1,5 @@
 """Bounded time-of-first-work-order admission on the delivered residual network."""
+import b03_formulas as formula
 from b03.initial_admission import find_path
 from b03.solver import active_requests, loads, path_errors, usable
 
@@ -45,7 +46,7 @@ def check_opening(target, snapshot, config, authority, mode, hold, *, rule_reque
             raise ValueError("Residual path violates the original service contract")
         for lid in path["linkIds"]:
             after=occupancy[lid]+path["allocatedBps"]
-            if after>links[lid]["params"]["bandwidthBps"]+1e-9:
+            if not formula.within_capacity(after, links[lid]["params"]["bandwidthBps"], formula.OPENING_EPS):
                 raise ValueError("Residual allocation exceeds available wire capacity")
             occupancy[lid]=after
         if rule_request is not None:

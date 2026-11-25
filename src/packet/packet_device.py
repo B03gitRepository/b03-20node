@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import Counter
 from copy import deepcopy
-from decimal import Decimal
+import b03_formulas as formula
 from inspect import Parameter, signature
 
 from resnet_bridge import ControlLoop, is_active_demand, validate_install_choice
@@ -107,10 +107,10 @@ class WorkLoop(ControlLoop):
         validate_install_choice(choice, service, links, now, self.config["qos_profile"])
 
     def _capacity_guard(self, loads, link_ids, links):
-        share = 1 - Decimal(str(self.config["control_headroom_fraction"]))
         for lid in link_ids:
             row = links["links"][lid]
-            if not row["usable"] or loads[lid] > int(Decimal(row["capacity_bps"]) * share):
+            if not row["usable"] or not formula.within_capacity(loads[lid], formula.capacity_budget(
+                    row["capacity_bps"], self.config["control_headroom_fraction"])):
                 raise ValueError("shared_wire_capacity:" + lid)
 
     @staticmethod

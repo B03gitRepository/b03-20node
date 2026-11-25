@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import b03_formulas as formula
 from collections import Counter, defaultdict
 import hashlib
 import json
@@ -31,8 +32,8 @@ def verify_business_denominators(intervals, business):
         dt = row["end_ns"] - row["start_ns"]
         if dt <= 0:
             raise ValueError("Invalid scoring interval")
-        totals["requested"] += dt * len(row["active"])
-        totals["weighted"] += dt * sum(row["active"].values())
+        totals["requested"] += formula.service_ns(dt, len(row["active"]))
+        totals["weighted"] += formula.service_ns(dt, sum(row["active"].values()))
         totals["unserved"] += row["U_service_ns"]
         for fraction, denominator in (("connectedPairFraction", "onlinePairDenominator"),
                                       ("activeEndpointReachableFraction", "activeEndpointDenominator")):
@@ -42,12 +43,13 @@ def verify_business_denominators(intervals, business):
             if value is not None:
                 if not 0 <= value <= 1:
                     raise ValueError("Invalid reachability fraction")
-                totals[fraction] += dt * value
-                totals[denominator] += dt
+                weighted, valid_dt = formula.time_fraction(dt, value)
+                totals[fraction] += weighted
+                totals[denominator] += valid_dt
     def ratio(numerator, denominator):
-        return totals[numerator] / totals[denominator] if totals[denominator] else None
-    expected = {"requestSeconds": totals["requested"] / 1e9,
-                "priorityRequestSeconds": totals["weighted"] / 1e9,
+        return formula.ratio(totals[numerator], totals[denominator])
+    expected = {"requestSeconds": formula.ns_to_seconds(totals["requested"]),
+                "priorityRequestSeconds": formula.ns_to_seconds(totals["weighted"]),
                 "UOverRequests": ratio("unserved", "requested"),
                 "onlinePairConnectedTimeMean": ratio("connectedPairFraction", "onlinePairDenominator"),
                 "activeEndpointReachableTimeMean": ratio("activeEndpointReachableFraction", "activeEndpointDenominator")}
@@ -58,7 +60,7 @@ def verify_business_denominators(intervals, business):
 
 
 def demand_original(row):
-    return (row["required_bps"], row["delay_limit_s"] * 1000, row["jitter_limit_s"] * 1000,
+    return (row["required_bps"], formula.seconds_to_ms(row["delay_limit_s"]), formula.seconds_to_ms(row["jitter_limit_s"]),
             row["ber_limit"], row["loss_limit"])
 
 
@@ -68,14 +70,14 @@ def sample_graph(endpoints, latest, stamp, ttl):
         pair = [latest.get((lid, n)) for n in (a, b)]
         if None in pair:
             continue
-        if any(not (v[0]["observed_at_ns"] <= v[1] <= stamp and stamp-v[0]["observed_at_ns"] <= ttl) for v in pair):
+        if any(not formula.fresh_sample(v[0]["observed_at_ns"], v[1], stamp, ttl) for v in pair):
             continue
         if not all(v[0]["node_online"] and v[0]["link"]["endpoint_online"] and v[0]["link"]["admin_up"] for v in pair):
             continue
         left,right = [v[0]["link"] for v in pair]
-        graph[lid] = {"ends":(a,b),"capacity":min(left["capacity_bps"],right["capacity_bps"]),
-                      "delay":max(left["delay_ns"],right["delay_ns"])/1e6,"jitter":max(left["jitter_ns"],right["jitter_ns"])/1e6,
-                      "loss":max(left["packet_loss_rate"],right["packet_loss_rate"]),"ber":max(left["ber"],right["ber"])}
+        merged = formula.fuse_endpoints(left, right)
+        graph[lid] = {"ends":(a,b), "capacity":merged["capacity_bps"], "delay":formula.ns_to_ms(merged["delay_ns"]),
+                      "jitter":formula.ns_to_ms(merged["jitter_ns"]), "loss":merged["packet_loss_rate"], "ber":merged["ber"]}
     return graph
 
 
@@ -88,12 +90,13 @@ def compare_qos(graph, decision, req):
     parts=[graph[lid] for lid in links]
     for a,b,row in zip(nodes,nodes[1:],parts):
         assert {a,b}==set(row["ends"])
-    metrics={"bandwidthBps":min(row["capacity"] for row in parts),"delayMs":sum(x["delay"] for x in parts),
-             "jitterMs":math.sqrt(sum(x["jitter"]**2 for x in parts)),"ber":min(1.,sum(x["ber"] for x in parts)),
-             "packetLossRate":1-math.prod(1-x["loss"] for x in parts)}
-    if metrics["bandwidthBps"]<decision["wire_bps"]:result.append("bandwidthBps")
+    metrics = formula.path_metrics({"bandwidthBps":x["capacity"], "delayMs":x["delay"], "jitterMs":x["jitter"],
+                                    "ber":x["ber"], "packetLossRate":x["loss"]} for x in parts)
+    metrics["bandwidthBps"] = metrics.pop("bottleneckBps")
+    if not formula.within_capacity(decision["wire_bps"], metrics["bandwidthBps"]):
+        result.append("bandwidthBps")
     for key in ["delayMs","jitterMs","ber","packetLossRate"]:
-        if metrics[key]>req[key]+1e-12: result.append(key)
+        if metrics[key]>req[key]+formula.EPS: result.append(key)
     return result, metrics
 
 
@@ -126,20 +129,21 @@ def verify(run, *, strict_source=False, components=None, checkpoint=None, tokeni
         assert sid in orig and orig[sid]["priority"]==d["priority"] and orig[sid]["requirement"]==d["requirement"]
     clocks=summary["clock"]; assert bus and bus[0]["start_ns"]==clocks["start_ns"] and bus[-1]["end_ns"]==clocks["end_ns"]
     assert all(x["end_ns"]==y["start_ns"] for x,y in zip(bus,bus[1:]))
+    payload_bytes = cond.get("formulaBinding", {}).get("effective", {}).get("payloadBytes", formula.PAYLOAD_BYTES)
     sums=Counter()
     for x in bus:
         dt=x["end_ns"]-x["start_ns"]
-        assert x["U_service_ns"]==dt*len(x["unmet"]) and x["W_service_ns"]==dt*sum(x["active"][sid] for sid in x["unmet"])
+        assert (x["U_service_ns"],x["W_service_ns"]) == formula.service_losses(dt,x["unmet"],x["active"])
         wire=Counter()
         for assignment in x["installed"].values():
             for lid in assignment["linkIds"]:
-                wire[lid]+=(assignment["allocatedBps"]*1036+999)//1000
+                wire[lid]+=formula.wire_bps(assignment["allocatedBps"], payload_bytes)
         assert dict(wire)==x["activeWireBps"]
         sums.update(U=x["U_service_ns"],W=x["W_service_ns"],requests=dt*len(x["active"]),
                     bit_ns=dt*sum(defs[s]["requirement"]["bandwidthBps"] for s in x["active"]))
     verify_business_denominators(bus, summary["business"])
-    for key in ["U","W"]:assert abs(sums[key]/1e9-summary["business"][key])<1e-7
-    assert abs(sums["bit_ns"]/1e9-summary["demandBits"])<=len(defs)
+    for key in ["U","W"]:assert abs(formula.ns_to_seconds(sums[key])-summary["business"][key])<1e-7
+    assert abs(formula.ns_to_seconds(sums["bit_ns"])-summary["demandBits"])<=len(defs)
     for counts in [summary["endBoundary"],packet]:
         for cls,x in counts.items():assert x["passed"] and x["generated"]==x["delivered"]+x["dropped"]+x["pending"]
     by_id=defaultdict(list); sends=defaultdict(list); acks=defaultdict(list)
@@ -197,6 +201,7 @@ def verify(run, *, strict_source=False, components=None, checkpoint=None, tokeni
             causal["freshService" if row["fresh"] else "staleService"]+=1
     plans=[x for x in acts if x["event"] in ("single_query_and_route","b03_rc_plan")]
     current={};last_demand={};i=0;good_count=0;missing_samples=0;route_evidence=[];former={}
+    budget_for = formula.capacity_budget if "formulaBinding" in cond else formula.legacy_verifier_budget
     ttl=cond["simulation"]["control"]["observation_ttl_ns"]
     for row in plans:
         stamp=row["time_ns"]
@@ -214,13 +219,13 @@ def verify(run, *, strict_source=False, components=None, checkpoint=None, tokeni
             assert set(row["release_ids"]+row["install_ids"])<=set(row["authorized"])<=set(defs)
             for lid,total in row["wire_ledger"]["proposed_wire_bps"].items():
                 if lid in graph and any(lid in x["link_path"] for x in decisions):
-                    assert total<=math.floor(graph[lid]["capacity"]*(1-cond["simulation"]["control"]["control_headroom_fraction"])+1e-6)
+                    assert total<=budget_for(graph[lid]["capacity"],cond["simulation"]["control"]["control_headroom_fraction"])
         for choice in decisions:
             if not choice["accepted"]:continue
             sid=choice["service_id"]; req=defs[sid]["requirement"]; d,received=last_demand[sid]
             assert d["observed_at_ns"]<=received<=stamp and stamp-d["observed_at_ns"]<=ttl and d["active"]
             assert demand_original(d["service"])==(req["bandwidthBps"],req["delayMs"],req["jitterMs"],req["ber"],req["packetLossRate"])
-            assert choice["reserved_bps"]==req["bandwidthBps"] and choice["wire_bps"]==(req["bandwidthBps"]*1036+999)//1000
+            assert choice["reserved_bps"]==req["bandwidthBps"] and choice["wire_bps"]==formula.wire_bps(req["bandwidthBps"], payload_bytes)
             errs,qos=compare_qos(graph,choice,req);assert not errs,(sid,errs)
             if sid not in former or former[sid]["link_path"]!=choice["link_path"]:
                 previous=former.get(sid)

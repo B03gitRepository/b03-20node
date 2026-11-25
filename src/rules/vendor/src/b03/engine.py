@@ -16,6 +16,7 @@ import os
 import time
 import uuid
 
+import b03_formulas as formula
 from .solver import (EPS, QOS, active_requests, assess, loads, path_errors,
                      solve, usable)
 
@@ -464,7 +465,7 @@ class Runtime:
         before=loads(self.links,self.assignments); after=loads(self.links,plan['target'])
         for lid,l in self.links.items():
             cap=l['params']['bandwidthBps'] if usable(self.nodes,l) else 0
-            if after[lid]>max(cap,before[lid])+EPS: errors.append('NEW_OR_WORSENED_CAPACITY_VIOLATION:'+lid)
+            if not formula.within_transition(after[lid], cap, before[lid]): errors.append('NEW_OR_WORSENED_CAPACITY_VIOLATION:'+lid)
         for sid,a in plan['target'].items():
             if a is not None and a!=self.assignments.get(sid):
                 if sid not in active: errors.append('INACTIVE_SERVICE:'+sid); continue
@@ -536,7 +537,7 @@ class Runtime:
             if sid in active and sid in self.config['protected_service_ids'] and proposed[sid]!=self.assignments.get(sid): reasons.append('PROTECTED_ASSIGNMENT_CHANGE')
             for lid,l in self.links.items():
                 cap=l['params']['bandwidthBps'] if usable(self.nodes,l) else 0
-                if after[lid]>max(cap,before[lid])+EPS: reasons.append('PREFIX_NEW_OR_WORSE_OVERLOAD:'+lid)
+                if not formula.within_transition(after[lid], cap, before[lid]): reasons.append('PREFIX_NEW_OR_WORSE_OVERLOAD:'+lid)
         applied=not reasons and not inject_failure
         if applied:
             self.assignments=proposed; self.config_version+=1

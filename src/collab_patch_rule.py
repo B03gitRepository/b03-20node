@@ -1,7 +1,7 @@
 """A standalone rule: route writable services in priority order using delivered links."""
 from collections import Counter, defaultdict
 from heapq import heappop, heappush
-from math import sqrt
+import b03_formulas as formula
 
 
 class Router:
@@ -66,13 +66,10 @@ def find_path(service, neighbors, occupied, hop_limit, order, budget):
         if len(edges) >= hop_limit:
             continue
         for peer,lid,link in neighbors[nodes[-1]]:
-            if peer in nodes or occupied[lid] + rate > link["bandwidthBps"]:
+            if peer in nodes or not formula.within_capacity(occupied[lid] + rate, link["bandwidthBps"]):
                 continue
-            d = delay + link["delayMs"]
-            j2 = jitter_sq + link["jitterMs"] ** 2
-            ber = min(1.,bit_error + link["ber"])
-            delivered = delivery * (1 - link["packetLossRate"])
-            if d > req["delayMs"] or sqrt(j2) > req["jitterMs"] or ber > req["ber"] or 1-delivered > req["packetLossRate"]:
+            d, j2, ber, delivered = formula.extend_path(delay, jitter_sq, bit_error, delivery, link)
+            if formula.exceeds_qos((d, j2, ber, delivered), req):
                 continue
             hops = len(edges)+1
             key = (d,hops) if order=="delay" else (hops,d)

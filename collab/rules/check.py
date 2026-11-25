@@ -3,11 +3,16 @@ import argparse
 from copy import deepcopy
 import importlib.util
 import json
-import math
+import shutil
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DEFAULT = HERE.parents[1] / "src" / "collab_patch_rule.py"
+SOURCE = HERE.parents[1] / "src"
+sys.path.insert(0, str(SOURCE))
+import b03_formulas as formula
+
+DEFAULT = SOURCE / "collab_patch_rule.py"
 
 
 def load(path, factory):
@@ -50,16 +55,27 @@ def check(msg, reply):
                 raise ValueError("Route continuity or availability failed")
             load_bps[lid] = load_bps.get(lid,0) + path["allocatedBps"]
             quality.append(link["params"])
-        if (sum(q["delayMs"] for q in quality)>req["delayMs"]
-                or math.sqrt(sum(q["jitterMs"]**2 for q in quality))>req["jitterMs"]
-                or min(1,sum(q["ber"] for q in quality))>req["ber"]
-                or 1-math.prod(1-q["packetLossRate"] for q in quality)>req["packetLossRate"]):
+        quality_metrics = formula.path_metrics(quality)
+        if any(quality_metrics[k] > req[k] for k in ("delayMs", "jitterMs", "ber", "packetLossRate")):
             raise ValueError("Original QoS violated")
-    if any(v>snapshot["links"][k]["params"]["bandwidthBps"] for k,v in load_bps.items()):
+    if any(not formula.within_capacity(v, snapshot["links"][k]["params"]["bandwidthBps"]) for k,v in load_bps.items()):
         raise ValueError("Link reservation exceeded")
     audit = reply.get("audit",{})
     if not isinstance(audit,dict) or set(audit.get("usedKnowledge",[]))-{r["id"] for r in msg.get("knowledgeContext",[])}:
         raise ValueError("Audit references undelivered knowledge")
+
+
+def export_kit(directory):
+    """Copy the minimal, self-contained standard-library runner into a new directory."""
+    root = HERE.parents[1]
+    members = ("collab/rules/check.py", "collab/rules/case.json", "src/collab_patch_rule.py",
+               formula.IMPLEMENTATION, formula.DECLARATION)
+    directory.mkdir(parents=True, exist_ok=False)
+    for name in members:
+        target = directory / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(root / name, target)
+    return members
 
 
 def main():
@@ -68,7 +84,11 @@ def main():
     ap.add_argument("--factory",default="build_rules")
     ap.add_argument("--registration", type=Path, help="Resolved rule registration JSON for a different provider")
     ap.add_argument("--case",type=Path,default=HERE/"case.json")
+    ap.add_argument("--export-kit", type=Path, help="Export the standalone kit into a new directory")
     opts = ap.parse_args()
+    if opts.export_kit is not None:
+        print(json.dumps({"files": export_kit(opts.export_kit)}))
+        return
     case = json.loads(opts.case.read_bytes())
     registered = json.loads(opts.registration.read_bytes()) if opts.registration else case["registration"]
     provider = load(opts.provider,opts.factory)(config=deepcopy(registered))

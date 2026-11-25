@@ -7,8 +7,7 @@ from types import SimpleNamespace
 from resnet.control.diagnosis import is_active_demand
 from resnet.control.interfaces import validate_policy_result
 from resnet.control.loop import ControlLoop
-from resnet.control.policy import _quality
-from resnet.control.policy import required_wire_bps
+import b03_formulas as formula
 from resnet.simulation.simulation import Simulation
 
 from simulator_ports import Ports, ack_record, execution_record, meter_record
@@ -22,7 +21,7 @@ def validate_install_choice(choice, service, links, now, qos_profile):
     if not choice["accepted"] or choice["reserved_bps"] != service.required_bps:
         raise ValueError("original_full_payload_rate_required")
     if qos_profile == "official":
-        _, violations = _quality(service, choice["link_path"], links["links"], 1036, qos_profile="official")
+        _, violations = formula.packet_quality(service, choice["link_path"], links["links"], qos_profile="official")
         if violations:
             raise ValueError("original_qos:" + ",".join(violations))
 
@@ -159,7 +158,7 @@ class MeasurementMixin:
         return nodes, links, requests, assignments
 
     def payload_wire_bps(self, rate):
-        return required_wire_bps(rate, self.config["payload_bytes"], 8)
+        return formula.wire_bps(rate, self.config["payload_bytes"])
 
     def meter_interval(self, row):
         pass

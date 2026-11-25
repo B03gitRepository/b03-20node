@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import Counter
 from copy import deepcopy
-from decimal import Decimal
+import b03_formulas as formula
 import hashlib
 from functools import lru_cache
 import inspect
@@ -15,9 +15,9 @@ from types import SimpleNamespace
 import uuid
 
 from packet_a2a import PacketA2A, digest
-from resnet.contracts.control import OBSERVATION_TTL_NS
+from b03_formulas import DEFAULT_TTL_NS as OBSERVATION_TTL_NS
 from resnet.control.observation import SERVICE_FIELDS, describe_service
-from resnet.control.policy import _quality, required_wire_bps
+from b03_formulas import wire_bps as required_wire_bps
 
 _DEFAULT_RUNTIME = Path(__file__).resolve().parent.parent / "rules"
 RUNTIME = Path(os.environ.get("B03_PACKET_RUNTIME", _DEFAULT_RUNTIME)).resolve()
@@ -48,7 +48,7 @@ def _implementations():
 
 
 def _packet_options(payload_bytes, epoch_overhead_bytes, control_headroom_fraction):
-    if (payload_bytes, epoch_overhead_bytes) != (1000, 8):
+    if (payload_bytes, epoch_overhead_bytes) != (formula.PAYLOAD_BYTES, formula.EPOCH_BYTES):
         raise ValueError("Packet control mode requires 1000 payload bytes and 8 epoch bytes")
     if (type(control_headroom_fraction) not in (int, float)
             or not 0 <= control_headroom_fraction < 1):
@@ -67,7 +67,7 @@ def _delivered_probe(report, *, lid, nid, peer, now, ttl):
     q = p["link"]
     if p["node_id"] != nid or q["link_id"] != lid or q["peer_node_id"] != peer:
         raise ValueError("Endpoint identity differs from the delivered probe")
-    return {"status": "fresh" if now - sampled <= ttl else "stale",
+    return {"status": "fresh" if formula.fresh_sample(sampled, arrived, now, ttl) else "stale",
             "sampled_at_ns": sampled, "received_at_ns": arrived, "seq": p["seq"], "version": p["version"],
             "node_online": p["node_online"], "admin_up": q["admin_up"], "endpoint_online": q["endpoint_online"],
             **{k: q[k] for k in METRICS}}
@@ -88,9 +88,10 @@ def _project_links(now_ns, snapshot):
         elif any(v["status"] == "stale" for v in reports.values()):
             link["reason"] = "stale_endpoint_observation"
         else:
-            # ObservationCache.snapshot owns the physical aggregation. Its row can
-            # reach a role only after both underlying reports have arrived and are fresh.
-            link.update({k: row[k] for k in ("usable", "reason", "observed_at_ns", *METRICS) if k in row})
+            # Preserve native availability and timing; derive QoS from the two delivered probes.
+            link.update({k: row[k] for k in ("usable", "reason", "observed_at_ns") if k in row})
+            if "capacity_bps" in row:
+                link.update(formula.fuse_endpoints(reports[a], reports[b]))
         out[lid] = link
     return out
 
@@ -157,8 +158,8 @@ def _request(service):
             "dstNodeId": service["dst_node_id"], "priority": service["priority"],
             "category": service["category"], "serviceType": service["service_type"],
             "requirement": {"bandwidthBps": required_wire_bps(service["required_bps"]),
-                            "delayMs": service["delay_limit_s"] * 1000,
-                            "jitterMs": service["jitter_limit_s"] * 1000, "ber": service["ber_limit"],
+                            "delayMs": formula.seconds_to_ms(service["delay_limit_s"]),
+                            "jitterMs": formula.seconds_to_ms(service["jitter_limit_s"]), "ber": service["ber_limit"],
                             "packetLossRate": service["loss_limit"]},
             "requiredPayloadBps": service["required_bps"]}
 
@@ -172,7 +173,6 @@ def _graph(raw_links, headroom, fixed):
     if set(fixed) - set(raw_links) or any(type(value) is not int or value < 0 for value in fixed.values()):
         raise ValueError("Invalid link or value in retained wire budget")
     nodes, links, budget = {}, {}, {}
-    fraction = Decimal(1) - Decimal(str(headroom))
     for lid, row in raw_links.items():
         src, dst = row["src_node_id"], row["dst_node_id"]
         up = row["usable"]
@@ -180,11 +180,11 @@ def _graph(raw_links, headroom, fixed):
         nodes.setdefault(dst, {"_online": False})
         if up:
             nodes[src]["_online"] = nodes[dst]["_online"] = True
-        budget[lid] = int(Decimal(row["capacity_bps"]) * fraction) if up else 0
+        budget[lid] = formula.capacity_budget(row["capacity_bps"], headroom) if up else 0
         links[lid] = {"srcNodeId": src, "dstNodeId": dst, "_online": up,
                       "params": {"bandwidthBps": max(0, budget[lid] - fixed.get(lid, 0)),
-                                 "delayMs": row.get("delay_ns", 0) / 1_000_000,
-                                 "jitterMs": row.get("jitter_ns", 0) / 1_000_000,
+                                 "delayMs": formula.ns_to_ms(row.get("delay_ns", 0)),
+                                 "jitterMs": formula.ns_to_ms(row.get("jitter_ns", 0)),
                                  "packetLossRate": row.get("packet_loss_rate", 0),
                                  "ber": row.get("ber", 0)}}
     return nodes, links, budget
@@ -205,7 +205,7 @@ def _choice(service, path, raw_links, *, revision=None, reason="no_feasible_b03_
     if any(not raw_links[lid]["usable"] for lid in path["linkIds"]):
         choice["reason"] = "hold_existing_unusable_path"
         return choice
-    quality, violations = _quality(SimpleNamespace(**service), path["linkIds"], raw_links, 1036,
+    quality, violations = formula.packet_quality(SimpleNamespace(**service), path["linkIds"], raw_links,
                                    qos_profile="official")
     choice.update(quality_estimates=quality, violations=violations)
     if violations:
@@ -216,8 +216,8 @@ def _choice(service, path, raw_links, *, revision=None, reason="no_feasible_b03_
     return choice
 
 
-def single_policy(snapshot, services, *, now_ns, payload_bytes=1000, epoch_overhead_bytes=8,
-                  control_headroom_fraction=.05, retained_wire_bps=None):
+def single_policy(snapshot, services, *, now_ns, payload_bytes=formula.PAYLOAD_BYTES, epoch_overhead_bytes=formula.EPOCH_BYTES,
+                  control_headroom_fraction=formula.DEFAULT_HEADROOM, retained_wire_bps=None):
     """Native DecisionPolicy, using the original B03 priority_greedy implementation."""
     options = _packet_options(payload_bytes, epoch_overhead_bytes, control_headroom_fraction)
     raw = _project_links(now_ns, snapshot)
@@ -228,7 +228,7 @@ def single_policy(snapshot, services, *, now_ns, payload_bytes=1000, epoch_overh
     if len(requests) != len(specs):
         raise ValueError("Duplicate service in DecisionPolicy input")
     started = time.perf_counter_ns()
-    target, audit = solve(nodes, links, requests, {}, now_ns / 1e9,
+    target, audit = solve(nodes, links, requests, {}, formula.ns_to_seconds(now_ns),
                           dict(CONFIG, protected_service_ids=[]), "priority_greedy")
     elapsed = time.perf_counter_ns() - started
     remaining = {lid: max(0, cap - retained.get(lid, 0)) for lid, cap in budget.items()}
@@ -282,7 +282,7 @@ def _model(state, headroom, permitted):
              for lid in raw}
     nodes, links, budget = _graph(raw, headroom, fixed)
     snapshot = {"nodes": nodes, "links": links, "requests": requests, "assignments": current,
-                "observedAtSec": state["now_ns"] / 1e9, "stateVersion": digest(state),
+                "observedAtSec": formula.ns_to_seconds(state["now_ns"]), "stateVersion": digest(state),
                 "configVersion": digest({"acks": acks, "node_versions": state["node_versions"]}),
                 "objectiveVersion": "priority-classes-then-min-changes-v1"}
     ledger = {"budget_bps": budget, "reported_wire_bps": reported,
@@ -324,11 +324,11 @@ def _diagnose(state, snapshot, ledger, config, allowed, protected):
                 row = state["links"][lid]
                 if not row["usable"] and row.get("reason") in DOWN:
                     evidence.append({"link_id": lid, "reason": row["reason"]})
-                elif row["usable"] and ledger["confirmed_wire_bps"].get(lid, 0) > row["capacity_bps"]:
+                elif row["usable"] and not formula.within_capacity(ledger["confirmed_wire_bps"].get(lid, 0), row["capacity_bps"]):
                     evidence.append({"link_id": lid, "reason": "confirmed_load_exceeds_observed_capacity"})
             all_fresh = all(state["links"][lid]["usable"] for lid in lids)
             if all_fresh:
-                _, violated = _quality(SimpleNamespace(**demand["service"]), lids, state["links"], 1036,
+                _, violated = formula.packet_quality(SimpleNamespace(**demand["service"]), lids, state["links"],
                                        qos_profile="official")
                 evidence.extend({"reason": v} for v in violated)
             if evidence and sid not in healthy:
@@ -832,8 +832,8 @@ def _verify_order(work_id, saved, state, receipts, expected, operations):
             elif not all(state["links"][lid]["usable"] for lid in ack["decision"]["link_path"]):
                 latest = "path_unavailable_or_unobserved"
             else:
-                _, violations = _quality(SimpleNamespace(**current["service"]), ack["decision"]["link_path"],
-                                         state["links"], 1036, qos_profile="official")
+                _, violations = formula.packet_quality(SimpleNamespace(**current["service"]), ack["decision"]["link_path"],
+                                         state["links"], qos_profile="official")
                 latest = "fresh_path_qos_violations" if violations else "fresh_path_configured_qos_passed"
         if absent:
             missing.append(sid)
@@ -948,10 +948,10 @@ class _PacketAgents:
 class PacketRoles:
     """Controller port for work-order planning and verification from received cache copies."""
 
-    def __init__(self, allowed_ids, log, *, control_headroom_fraction=.05, protected_ids=(),
+    def __init__(self, allowed_ids, log, *, control_headroom_fraction=formula.DEFAULT_HEADROOM, protected_ids=(),
                  urls=None, run_id=None, chooser=None):
         from frozen_policy import DecisionPolicy
-        options = _packet_options(1000, 8, control_headroom_fraction)
+        options = _packet_options(formula.PAYLOAD_BYTES, formula.EPOCH_BYTES, control_headroom_fraction)
         self._agents = _PacketAgents(allowed_ids, protected_ids, options["control_headroom_fraction"], chooser or DecisionPolicy("I"))
         self._log = log
         self._run = run_id or uuid.uuid4().hex

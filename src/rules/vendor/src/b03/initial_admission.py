@@ -4,10 +4,10 @@ from __future__ import annotations
 import heapq
 import itertools
 import math
-import sys
 import time
 from collections import Counter
 
+import b03_formulas as formula
 from .solver import EPS, active_requests, candidate_paths, loads, path_errors, usable
 
 
@@ -36,7 +36,7 @@ def residual_links(available, load, request):
     """Capacity uses the same addition and tolerance as the native allocation guard."""
     demand = request['requirement']['bandwidthBps']
     return {lid: link for lid, link in available.items()
-            if load[lid] + demand <= link['params']['bandwidthBps'] + EPS}
+            if formula.within_capacity(load[lid] + demand, link['params']['bandwidthBps'], EPS)}
 
 
 def reachable(source, destination, edges):
@@ -60,17 +60,7 @@ def reachable(source, destination, edges):
 
 
 def qos_limits(request, n_nodes):
-    q = request['requirement']
-    # Expand numerical bounds outwards. Native path_errors has the final say.
-    # The extra (graph-size dependent) allowance covers forward/reverse summation
-    # and the native product of link survivals, particularly near loss = 0 or 1.
-    def outward(value):
-        return value + EPS + 32 * n_nodes * sys.float_info.epsilon * max(1., value)
-    loss = outward(q['packetLossRate'])
-    ber = outward(q['ber'])
-    jitter = outward(q['jitterMs'])
-    return (outward(q['delayMs']), jitter * jitter,
-            ber if ber < 1 else math.inf, -math.log1p(-loss) if loss < 1 else math.inf)
+    return formula.search_limits(request["requirement"], n_nodes)
 
 
 def lower_bounds(adjacency, destination, metric):
@@ -104,9 +94,7 @@ def guided_search(nodes, edges, request, config):
     for lid, link in sorted(edges.items()):
         a, b = link['srcNodeId'], link['dstNodeId']
         p = link['params']
-        loss = p['packetLossRate']
-        vector = (p['delayMs'], p['jitterMs'] * p['jitterMs'], p['ber'],
-                  -math.log1p(-loss) if loss < 1. else math.inf)
+        vector = formula.search_vector(p)
         adjacency[a].append((b, lid, vector))
         adjacency[b].append((a, lid, vector))
     audit = {'method': 'reverse_qos_simple_path_astar', 'expansionBudget': budget,
@@ -236,7 +224,7 @@ def supplement(nodes, links, requests, initial, config):
             raise RuntimeError('INITIAL_ADMISSION_PATH_GUARD')
         spare = [links[lid]['params']['bandwidthBps'] - load[lid] for lid in path['linkIds']]
         for lid in path['linkIds']:
-            if load[lid] + demand > links[lid]['params']['bandwidthBps'] + EPS:
+            if not formula.within_capacity(load[lid] + demand, links[lid]['params']['bandwidthBps'], EPS):
                 raise RuntimeError('INITIAL_ADMISSION_CAPACITY_GUARD')
         for lid in path['linkIds']:
             load[lid] += demand

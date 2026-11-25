@@ -1,35 +1,35 @@
-# Run evidence and source verification
+# 工单证据与源码核验
 
-Current work orders declare `CONDITIONS.receiptContract = b03.packet.workorder.v2` and seal a `b03.packet.run-files.v2` member index. Archive verification reads recorded contracts and component identities. For a strict replay of an earlier release, use that original checkout, engine and active assets with `run.py verify RUN --strict-source`.
+新工单以 `b03.packet.workorder.v3` 写入 `CONDITIONS.receiptContract`，并以 `b03.packet.run-files.v3` 封存成员索引。`formula-edition.json` 保留本次执行的完整公式版本，运行条件绑定其摘要、实现摘要及实际生效参数。归档核验按记录的版本解释 v1、v2 和 v3 回执。要严格复现旧版本，请在原提交、原引擎和已启用资产下运行 `run.py verify RUN --strict-source`。
 
 
-`python run.py verify RUN` rechecks the saved work order on the packet clock. It checks the archived file digests, the official scenario and simulator release identity, service permissions, QoS, path activation, per-hop device readback, packet conservation and the U/W integrals. It can run from a later checkout for the same official scenario profile. The model adapter, weight directory and solver wheel can all be absent. Keep the original `RUN_FILES.json` digest with the release record if you need an independent reference for the archive.
+`python run.py verify RUN` 按分组时钟核验已保存的工单，检查档案成员摘要、官方场景及引擎身份、业务权限、QoS、路径生效、逐跳设备读回、分组守恒和 U/W 积分。可在同规模的后续版本执行归档核验，无需安装当时的模型适配器、权重或求解器软件包。需要外部可信参照时，将原 `RUN_FILES.json` 的摘要与版本记录一同保存。
 
-## Inspect a saved run
+## 检查已保存工单
 
 ```console
 python run.py verify RUN --report audit.json
 python run.py examples RUN --output samples.json
 ```
 
-The report identifies the verification mode and the SHA-256 of `RUN_FILES.json`. The example exporter reads a recorded RC choice and solver proposal from `b03.jsonl`. Use `--record-component-io` when creating a run if you need the complete solver input and output. New runs include the selected technical knowledge edition in `CONDITIONS.provenance.knowledge`. Its original UTF-8 bytes and digest identify the edition used for the accompanying K045 query.
+报告标出核验方式及 `RUN_FILES.json` 的 SHA-256。样例导出器从 `b03.jsonl` 读取真实 RC 选择与求解提案。需要完整求解输入输出时，在创建工单时加 `--record-component-io`。`CONDITIONS.provenance.knowledge` 记录所选技术知识版本的 UTF-8 原文与摘要，可据此核对随附的 K045 查询。规范公式的版本及参数由独立的公式回执绑定。
 
-A run from `components-v1.0.0` already records the provider entry-module hash, full checkout inventory and selected knowledge digest. The current verifier can audit the archived business outcome after an upgrade or removal of that plugin. The exporter uses a local knowledge file only when its digest matches the archived edition. If that copy is unavailable, the result marks the knowledge sample `legacy-source-unavailable` and retains the recorded work-order samples. Runs predating component registration identify their knowledge sample as `knowledge-unrecorded`.
+`components-v1.0.0` 运行已经记录提供方入口模块摘要、完整仓库文件表及选定的知识摘要。更换或移除插件后，当前核验器仍可审计归档业务结果。导出器仅在本地知识文件与归档摘要一致时使用它。若原文件不可用，知识样例标为 `legacy-source-unavailable`，已归档的工单样例仍可读取。早于组件登记的运行使用 `knowledge-unrecorded`。
 
-## Compare the original implementation and environment
+## 对照原实现与环境
 
-Restore the recorded Git release, Python environment and any external assets from their original storage. Use the manifest that selected the provider.
+恢复原 Git 版本、Python 环境和所需外部资产，使用原运行选择提供方的清单。
 
 ```console
 python run.py verify RUN --strict-source --components /path/to/partner.json --simulator /path/to/resnet_py
 python run.py verify MODEL_RUN --strict-source --components /path/to/model.json --checkpoint /private/weights --tokenizer /private/tokenizer
 ```
 
-Strict comparison checks the checkout’s Python sources, including helpers available to partner implementations, resolved component settings, Python version and platform, installed distributions, and active model assets. With `--simulator` or `B03_SIMULATOR`, the verifier rereads each pinned file from the local packet engine and reports `simulatorCheck` as `installed-files`. Without an engine path it checks the archived release against the public lock and reports `release-lock-only`. A source export records file digests and can be located through the release index. Each discrepancy identifies the component, distribution, file or asset. Fixed-tool work orders do not require model weights. Edits to an unselected knowledge edition or an unused manifest in the same checkout leave the effective comparison intact. The report lists the recorded and current Git commits when available. Equivalent source content may pass after a merge or a commit that changes an unused manifest.
+严格模式核对仓内 Python 源码（包括合作方可调用的辅助模块）、已解析组件配置、Python 版本和平台、安装包及启用的模型资产。登记 `simulatorRuntime` 的工单逐文件核对所选引擎，默认取仓内引擎，`--simulator` 或 `B03_SIMULATOR` 可覆盖，报告显示 `installed-files`。较早未登记运行时的工单，未显式指定外部引擎时按原发布锁核验，显示 `release-lock-only`。差异按组件、发行包、文件或资产列出。固定工具工单无需模型权重。未启用的知识版本及未选清单不进入生效配置对照。源码归档保留文件摘要，报告在可用时列出原提交和当前提交。合并或仅改未用清单后，生效内容等价仍可通过核验。
 
-The built-in Qwen actor continues to check every configured tokenizer file and every registered weight against `config/model.json`. The 20-node release uses the registered safetensor shards and index. The 100-node release uses the registered native checkpoint and metadata pair. A wrapper reporting this native actor identity follows the same checks. An independent model can accept a checkpoint file, a directory of weight shards and an optional separate tokenizer. The host hashes their actual bytes when supplied on an active model run. Use a stable checkpoint taken before the run for online adapters.
+内置 Qwen 策略按 `config/model.json` 逐项校验分词器文件与权重。20 节点用登记的 safetensors 分片及索引，100 节点用登记的原生检查点和元数据。声明相同原生策略身份的包装器沿用这些检查。独立模型可以使用单个检查点、权重分片目录及单独的分词器。活动模型运行实际提供的资产均按原始字节计算摘要。在线适配器应使用运行前稳定保存的检查点。
 
-For a v1 run, the original tag and command remain available.
+v1 工单保留原标签及核验命令。
 
 ```console
 git worktree add ../b03-original components-v1.0.0
@@ -37,11 +37,11 @@ cd ../b03-original
 python run.py verify /path/to/original-run
 ```
 
-To rerun the simulation, use that tag's documented `run` command with the original scenario, simulator, manifest, weights, service scope and clock window. A legacy receipt's entry-module digest cannot establish the contents of an unrecorded sibling package or dependency. Retain the original environment or wheel with that experiment.
+从头重演仿真时，在原标签下使用当时文档中的 `run` 命令和原场景、引擎、清单、权重、业务范围及时间窗口。较早回执仅登记入口模块时，未登记的同包文件或依赖需从原实验的环境或 wheel 恢复。
 
-## Register external sources and assets
+## 登记外部源码及资产
 
-Install a partner wheel in the Python environment running B03. Its import name and distribution name can differ. B03 locates the distribution that owns the actual entry-module file. An explicit `distribution` resolves ambiguous package names. The same provenance fields are accepted in the `model` and `rules` registrations.
+在 B03 所用 Python 环境中安装合作方 wheel。导入名可以与发行包名不同；B03 按实际入口文件定位所属发行包，名称有歧义时填写 `distribution`。`model` 与 `rules` 均支持下述来源字段。
 
 ```json
 {
@@ -59,11 +59,11 @@ Install a partner wheel in the Python environment running B03. Its import name a
 }
 ```
 
-Place this manifest beside the base `components.json`, or adjust `extends` to the location of the published base manifest. Each asset path resolves against the manifest that declares it, including inherited registrations. The logical asset name and content digest travel in the receipt. Register out-of-package configuration, lookup tables and model files opened by the implementation. For dynamically selected Python dependencies, list their distribution names or PEP 508 requirements in `distributions`.
+将清单放在基础 `components.json` 旁，或调整 `extends` 指向基础清单。所有资产路径相对声明它的清单解析，继承项同样适用。回执记录资产的逻辑名及内容摘要。请登记实现实际读取的软件包外配置、查询表和模型文件。动态选择的依赖可在 `distributions` 列出发行包名或 PEP 508 要求。
 
-The collector hashes the actual installed files in the selected distribution, including helper modules, compiled extensions, package data and metadata. It follows active `Requires-Dist` declarations transitively, applying Python and platform markers and enabled extras. Generated bytecode caches and installer bookkeeping such as local download URLs are excluded. Verification rereads the installed files and can identify a changed helper or data file even when the package version and entry module stay the same. When pip recorded the original wheel digest, `installationWheelSha256` identifies that download. A wheel installed from an index can lack this optional origin record. Strict comparison uses the installed contents in either case and includes additional files present alongside an importable package. Collection and verification use the local installation without fetching dependencies.
+采集器按已安装的实际内容计算摘要，包括辅助模块、编译扩展、包数据和元数据。按 Python 与平台标记和已启用 extras 递归解析生效的 `Requires-Dist`。自动生成的字节码及安装记录中的本地下载地址等不计入。即使版本或入口未变，也可检出辅助模块及数据文件的变化。pip 留有原 wheel 摘要时，`installationWheelSha256` 标识该下载。通过索引安装时，这项可选记录可能缺失。严格核验始终对照本地安装内容，包含可导入包旁的附加文件；采集及核验均无需在线获取依赖。
 
-For a local multi-module package or editable install, declare the importable top-level roots that provide the implementation and its local imports. Each package tree includes its submodules and resource files. A single-file module is captured as a single file. Register additional data held outside those roots using `assets`. An editable install with no declared source roots produces an actionable error. A namespace split across multiple local directories can be distributed as separate wheels.
+本地多模块包或可编辑安装应声明实现及其本地导入依赖的顶层根。每棵包树纳入子模块和资源文件，单文件模块单独收录。根目录外的数据用 `assets` 登记。可编辑安装漏登源码根时会报告需补的配置。跨本地目录的命名空间可分装为多个 wheel。
 
 ```json
 {
@@ -80,4 +80,4 @@ For a local multi-module package or editable install, declare the importable top
 }
 ```
 
-The receipt records hashes for private model assets. Their bytes, the official input data and the native traces stay with the run owner. Store the referenced Git release, original wheels, checkpoint and raw archive at the locations listed in the experiment index.
+回执保存私有模型资产的哈希。权重原件、官方输入及完整轨迹由运行方持有，原 Git 版本、wheel、检查点和原始档案按实验索引保管。

@@ -24,16 +24,28 @@ def source_identity():
     return {p.relative_to(ROOT).as_posix(): sha256(p) for p in sorted(paths)}
 
 
-def contract_for_mode(mode):
-    return "b03.packet.workorder.v2" if mode == "workorder" else "b03.packet.run.v2"
+def contract_for_mode(mode, version=3):
+    family = "workorder" if mode == "workorder" else "run"
+    return f"b03.packet.{family}.v{version}"
 
 
 def receipt_format(conditions):
-    if "receiptContract" not in conditions:
-        if "src/episode_contract.py" in conditions.get("implementationSha256", {}):
+    pins = conditions.get("implementationSha256", {})
+    mode = conditions.get("mode")
+    contract = conditions.get("receiptContract")
+    from b03_formulas import DECLARATION, IMPLEMENTATION
+    proof_files = (conditions.get("provenance") or {}).get("checkoutFiles", {})
+    markers = {DECLARATION, IMPLEMENTATION}
+    has_formula = bool(markers.intersection(pins) or markers.intersection(proof_files) or "formulaBinding" in conditions)
+    if has_formula or contract == contract_for_mode(mode):
+        if (contract != contract_for_mode(mode) or not markers.issubset(pins) or not isinstance(conditions.get("formulaBinding"), dict)):
+            raise ValueError("Missing or inconsistent formula contract for v3 producer")
+        return "b03.packet.run-files.v3"
+    if contract is None:
+        if "src/episode_contract.py" in pins:
             raise ValueError("Receipt from a v2 producer has no contract marker")
         return "b03.packet.run-files.v1"
-    if conditions["receiptContract"] != contract_for_mode(conditions.get("mode")):
+    if contract != contract_for_mode(mode, 2):
         raise ValueError("Unsupported contract for this receipt mode")
     return "b03.packet.run-files.v2"
 
@@ -55,6 +67,11 @@ def check_members(run, conditions):
     optional = {"controller.jsonl", "executions.jsonl", "routes.jsonl", "packets-control.jsonl",
                 "input/b03-demand-ends.json"}
     required.update(name for name in optional if (run / name).exists())
+    from b03_formulas import MEMBER
+    if record["schema"] == "b03.packet.run-files.v3":
+        required.add(MEMBER)
+    elif MEMBER in files or (run / MEMBER).exists():
+        raise ValueError("Formula edition on a legacy receipt")
     if not required.issubset(files):
         raise ValueError("Evidence index is missing: " + ", ".join(sorted(required - files.keys())))
     root = run.resolve()
@@ -195,6 +212,10 @@ def legacy_source(conditions, components, checkpoint, tokenizer):
 
 def check_archive(run, conditions, *, strict_source=False, components=None, checkpoint=None, tokenizer=None, simulator=None):
     files = check_members(run, conditions)
+    if "formulaBinding" in conditions:
+        from b03_formulas import MEMBER, verify_binding
+        verify_binding(conditions["formulaBinding"], (run / MEMBER).read_bytes(),
+                       conditions["simulation"], conditions["implementationSha256"])
     check_official_inputs(run, conditions, files)
     check_recorded(conditions)
     proof = conditions.get("provenance")

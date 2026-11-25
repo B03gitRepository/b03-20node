@@ -132,11 +132,12 @@ build_rules(*, config) -> provider
 
 ### 1. 本地离线自测（仅需 Python 3.10+ 标准库，不依赖赛事数据）
 
-在仓库根目录执行，使用 [case.json](case.json) 与 [check.py](check.py) 验证候选宣告、差量输出、QoS/容量约束及知识排序响应（可单独复制 `check.py`、`case.json` 与自研插件离线测试）：
+在仓库根目录执行，使用 [case.json](case.json) 与 [check.py](check.py) 验证候选宣告、差量输出、QoS/容量约束及知识排序响应。需要在仓库外运行时，用 `--export-kit` 导出自测脚本、样例、参考规则和锁定公式到一个新目录，再从该目录运行相同命令。
 
 ```sh
 python -I collab/rules/check.py
 python -I collab/rules/check.py --provider path/to/your_rule.py --registration path/to/registration.json
+python -I collab/rules/check.py --export-kit ./rule-kit
 ```
 
 ### 2. 真实工单运行与严格核验（需配置基础依赖与 `B03_DATA`）

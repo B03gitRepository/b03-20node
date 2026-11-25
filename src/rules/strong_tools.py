@@ -4,6 +4,7 @@ Imports the frozen/current b03 solver from caller's sys.path. No future events.
 from __future__ import annotations
 import copy, hashlib, itertools, json, time, warnings
 from types import SimpleNamespace
+import b03_formulas as formula
 from b03.solver import (active_requests, assess, candidate_paths, loads, objective,
                         path_errors, path_metrics, solve, usable, EPS)
 from b03.engine import Runtime
@@ -72,7 +73,7 @@ def _setup(s, authority):
     return active, base, work, cap_guard
 
 def _fits(path, occupancy, caps):
-    return all(occupancy[lid] + path["allocatedBps"] <= caps[lid] + EPS for lid in path["linkIds"])
+    return all(formula.within_capacity(occupancy[lid] + path["allocatedBps"], caps[lid], EPS) for lid in path["linkIds"])
 
 def _add(path, occupancy, sign):
     if path:
@@ -200,14 +201,8 @@ def _milp(s, active, base, work, pools, caps, budget):
         return incumbent, {"solverStatus": "empty_candidate_pool", "finitePoolOptimal": True, "variableCount": 0}
     # Lexicographic priority counts over the decisions available in this pool.
     # Each higher-priority unit dominates every lower-priority unit and change cost.
-    from collections import Counter
     mutable = {sid for sid, _ in variables}
-    counts = Counter(active[sid]["priority"] for sid in mutable)
-    unit = len(mutable) + 1
-    weights = {}
-    for priority, count in sorted(counts.items()):
-        weights[priority] = unit
-        unit *= count + 1
+    weights = formula.priority_coefficients(active[sid]["priority"] for sid in mutable)
     if max(weights.values(), default=0) * max(1, len(variables)) > 2**50:
         return incumbent, {"solverStatus": "objective_scaling_refused", "finitePoolOptimal": False}
     # Counts are lexicographic, then fewer changed service assignments (historical objective).
@@ -248,7 +243,7 @@ def _milp(s, active, base, work, pools, caps, budget):
                 if proposal[sid] is not None: duplicate = True
                 proposal[sid] = clone(p)
         load = loads(s["links"], proposal)
-        feasible = not duplicate and all(load[lid] <= caps[lid]+EPS for lid in caps)
+        feasible = not duplicate and all(formula.within_capacity(load[lid], caps[lid], EPS) for lid in caps)
         if feasible and (not incumbent_in_budget or objective(active, proposal, s["assignments"]) >= objective(active, incumbent, s["assignments"])):
             target = proposal
     return target, {"solverStatus": {0:"optimal_in_finite_pool",1:"limit_reached",2:"infeasible_in_finite_pool",3:"unbounded",4:"solver_error"}.get(result.status,"unknown"),
@@ -290,7 +285,8 @@ def validate_proposal(snapshot, config, authority, target):
         before = loads(s["links"], trial); trial[action["serviceId"]] = clone(action["assignment"])
         after = assess(s["nodes"],s["links"],s["requests"],trial,s["observedAtSec"])
         violated = [lid for lid,l in s["links"].items()
-                    if after["linkLoadsBps"][lid] > max(before[lid], l["params"]["bandwidthBps"] if usable(s["nodes"],l) else 0)+EPS]
+                    if not formula.within_transition(after["linkLoadsBps"][lid],
+                        l["params"]["bandwidthBps"] if usable(s["nodes"],l) else 0, before[lid])]
         if violated: errors.append("PREFIX_NEW_OR_WORSE_OVERLOAD:" + ",".join(violated))
         prefixes.append({"index":i,"action":action["action"],"serviceId":action["serviceId"],
                          "satisfiedCount":after["satisfiedCount"],"satisfiedPriorityWeight":after["satisfiedPriorityWeight"],

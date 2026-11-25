@@ -1,23 +1,23 @@
-# Joint optimization guide
+# 联合优化指南
 
-For the current four component contracts, fixtures and standalone tests, start at [the collaboration entry](../collab/README.md).
+四组的接口、合成样例和独立自测集中在[协作入口](../collab/README.md)。
 
-Both network sizes use the same work-order and component contracts. Select the repository whose profile matches your official input. Start with the default work order in the [README](../README.md). Keep its verification report as your comparison.
+20 和 100 节点使用同一套工单和组件契约。选择与官方输入规模匹配的仓库，先按[首页](../README.md)运行默认工单，保存核验报告作为对照。
 
-| Team | Owns | First integration example | Evidence to return |
+| 小组 | 职责 | 首个联调示例 | 提交的证据 |
 |---|---|---|---|
-| Model | Tool selection, observation encoding, numerical precision, sampling and checkpoint recovery | [Model interface](MODEL.md), `config/int8-model.json` | Legal choices and policy version. For training, include the probability actually sampled, two parameter updates and a fresh-process restore. |
-| Simulation | Packet queues, report transport, device execution and compatible simulator releases | [Simulation interface](SIMULATOR.md), `config/example-simulator.json` | Engine identity, matched report times, command IDs and per-hop readbacks. Separate network waiting from solver time. |
-| Knowledge and scheduling rules | Versioned technical entries and read-only retrieval, candidate paths and joint configuration algorithms | [Knowledge](KNOWLEDGE.md), [rules](RULES.md), `config/example-knowledge.json`, `config/branch-rules.json` | Entry IDs, sources and applicable conditions. For a rule, supply the authorized scope, proposal, audit and measured result. |
-| Systems integration | OM/RC and A2A, authority, action catalog, device writer, scoring, regression and release | `config/components.json`, `run.py verify` | Same-input comparisons, archived receipts, version mapping and a tested release commit. |
+| 模型组 | 工具选择、观测编码、数值精度、采样和检查点恢复 | [模型接口](MODEL.md)、`config/int8-model.json` | 记录合法动作和策略版本。训练还需记录真实行为概率、两次参数更新和新进程恢复。 |
+| 仿真组 | 分组队列、上报传输、设备执行和引擎兼容 | [仿真接口](SIMULATOR.md)、`config/example-simulator.json` | 引擎指纹、配对的上报时间、指令编号和逐跳读回。网络等待与求解耗时分别计量。 |
+| 知识库与规则库组 | 技术条目版本和只读检索、候选路径及多业务联合求解 | [知识接口](KNOWLEDGE.md)、[规则接口](RULES.md)、`config/example-knowledge.json`、`config/branch-rules.json` | 知识编号、来源和适用条件。规则另附授权范围、配置提案、审计与实测结果。 |
+| 系统集成组 | OM/RC、A2A、权限、动作目录、设备写入、计分、回归与发布 | `config/components.json`、`run.py verify` | 同输入对照、归档回执、版本对应关系和通过验收的提交。 |
 
-## Submit one change
+## 提交一项改动
 
-1. Branch from the published commit and note the repository scale. Record the baseline commit, scenario fingerprint, seed, window, drain interval, allowed services, component versions and model checkpoint identity where applicable.
-2. Add a configuration extending `config/components.json`. Change one component at a time. Version its implementation and keep portable assets next to the manifest or in an installable package. The [provenance format](PROVENANCE.md) supports external distributions and versioned assets.
-3. Run the baseline and the candidate against your licensed data and read-only simulator. Reuse the same CPU settings and model warm-up convention. Use a fresh output directory each time.
-4. On the candidate, run archive verification, strict verification with its installed dependencies, and example export. Include the exact replay command and a short aggregate table in your pull request. Keep raw scene-derived traces, datasets and weights in the authorized shared workspace.
-5. The integration team checks both network sizes, records which component versions passed, and promotes the tested Git commit. New model-visible tool meanings or observation encodings get an explicit version and a held-out comparison with the original policy.
+1. 从约定基线建分支，注明规模、基线提交、场景指纹、随机种子、计分窗、排空期、可写业务、组件版本和所用模型检查点。
+2. 新建继承 `config/components.json` 的配置，每次替换一个组件。登记实现版本，将可移植资产放在清单旁或可安装的软件包中。[溯源格式](PROVENANCE.md)支持外部发行包及版本化资产。
+3. 使用同一份授权数据、只读引擎、CPU 设置及预热约定运行基线和候选，各自写入新目录。
+4. 在候选版执行归档核验、带原依赖的严格核验和样例导出。在合并请求中附复现命令和简短对照表，场景轨迹、数据集与权重保存在授权工作区。
+5. 系统集成组验证两个节点规模，登记通过的组件版本和 Git 提交。更改模型可见的工具语义或观测编码时，单独登记版本，并在留出场景与原策略对照。
 
 ```bash
 python -B -m unittest discover -s tests
@@ -31,22 +31,22 @@ python run.py verify runs/simulator --components config/example-simulator.json -
 python run.py examples runs/simulator --output runs/simulator-examples.json
 ```
 
-For the model example, install the model dependencies and set the checkpoint and tokenizer paths described in [MODEL.md](MODEL.md). The fixed and model policies both pass through OM/RC, A2A, the same writer and per-hop readback. The fixed path chooses its configured tool without a model call.
+模型示例还需按[模型文档](MODEL.md)安装依赖、设置权重和分词器。固定规则和模型均经 OM/RC、A2A、同一设备写入口和逐跳读回。固定规则按配置直接选工具。
 
-## Compare results
+## 比较结果
 
-`SUMMARY.json → competitionMetrics` uses the simulation clock in nanoseconds. Each distribution gives its sample count, mean, nearest-rank P95 and maximum. Empty samples have null durations. The primary summaries cover the scoring window. `includingDrain` extends measurement through device cleanup. Inspect individual records when plans were rejected, unfinished or had no device change.
+`SUMMARY.json` 的 `competitionMetrics` 使用仿真纳秒。每组时延报告样本数、均值、最近秩 P95 和最大值，空样本的时延为空。主表覆盖计分窗，`includingDrain` 延伸至设备排空结束。拒绝、未完成或没有配置变更的工单可按记录逐项查看。
 
-| Metric | Published definition |
+| 指标 | 计算口径 |
 |---|---|
-| State perception | Official in-window event to arrival of fresh matching state reports. A link change requires matching reports at both endpoints. A node outage without a matching delivered report remains in the event denominator. Position-only movement has no coordinate report in the current contract. |
-| Strategy generation | Latest fresh report in the bound OM snapshot to the computed plan's ready time. Per-work-order `generationComputeNs` isolates measured RC computation. Missing fresh evidence is reported separately. |
-| Strategy dispatch | First configuration write sent to last distinct configuration write delivered, for a signed work order. Retried commands share one ID. First issue, last observed device effect and final OM sign-off each have their own timestamp. |
-| Connectivity | Time-weighted pair connectivity among online nodes. Active service endpoint reachability has a separate denominator. |
-| Service guarantee | Requested service-seconds, unserved service-seconds U and served fraction. W is priority-weighted unserved service-seconds for evaluation. Data delivery and drops remain in the packet counters. |
+| 状态感知 | 从窗内官方事件到匹配的新鲜报告送达。链路变化需两端均有匹配报告。节点故障缺少匹配报告时仍计入事件分母。现有协议没有纯位置变化的坐标上报。 |
+| 策略生成 | 从绑定的 OM 快照内最新的新鲜报告送达至方案就绪。`generationComputeNs` 单列 RC 实测计算耗时。缺少新鲜证据的工单单独计数。 |
+| 策略下发 | 对已签收工单，从首次发送配置写指令至最后一条不同写指令送达。同一指令重试沿用原编号，首次下发、最后观测到的设备生效与 OM 最终签收分别留时戳。 |
+| 连通度 | 按有效时长加权计算在线节点对连通率。活跃业务端点可达率使用自己的分母。 |
+| 业务保障 | 报告请求业务秒、未保障业务秒 U 及保障比例，按优先级加权的 W 用于评价。分组交付与丢包另见分组计数。 |
 
-Demand bandwidth, QoS, priority, permissions and clocks come from the recorded work order. Technical knowledge is advisory. Resources remain reserved until the corresponding device release is confirmed. The model sees the arrived decision evidence and the legal tool catalog. Offline scoring can use simulator state after the episode.
+业务速率、QoS、优先级、权限和时间窗取自实际工单。技术知识为处置提供参考。设备确认释放后，对应资源才能复用。模型只能使用已送达证据和本单合法目录。离线计分在回合结束后可以读取仿真状态。
 
 [中文协作交接](COLLABORATION_zh.md)
 
-Scored denominators accompany each time distribution. A fresh arrival timestamp is recorded for every plan, including holds without a configuration change. Coverage separately counts plans without fresh evidence, plans ready after the window, rejected-proposal fallback holds and verified configurations. Reachability, requested service-seconds and the service ratio are checked against the interval ledger.
+时延分布附计分分母。每份方案均记录新鲜证据的到达时刻，包括保持配置的工单。覆盖率另计缺少证据、关窗后就绪、提案拒绝后保持及已核验配置。可达率、请求业务秒和保障比例逐项与区间账复核。

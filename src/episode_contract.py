@@ -10,6 +10,7 @@ import sys
 import tempfile
 
 from scene import PROFILE, ROOT
+import b03_formulas as formula
 
 # Research splits are by full development script, including every derived window.
 TRAIN_SCRIPTS = {20: {"01", "02", "04", "05"}, 100: {"04", "05"}}
@@ -44,20 +45,20 @@ def trajectory(intervals, choices, verified_u):
         if lo != (ends[-1] if ends else start) or hi < lo:
             raise ValueError("Non-contiguous service clock")
         count = len(row["unmet"])
-        accrued = (hi - lo) * count
+        accrued = formula.service_ns(hi - lo, count)
         if row["U_service_ns"] != accrued:
             raise ValueError("Incorrect unweighted service clock")
         ends.append(hi)
         counts.append(count)
         totals.append(totals[-1] + accrued)
-    if not ends or abs(totals[-1] / 1e9 - verified_u) > 1e-8:
+    if not ends or abs(formula.ns_to_seconds(totals[-1]) - verified_u) > 1e-8:
         raise ValueError("Trajectory and verified U differ")
 
     def unmet_until(t):
         k = bisect_right(ends, t)
         if k == len(ends):
             return totals[k]
-        return totals[k] + (t - (ends[k - 1] if k else start)) * counts[k]
+        return totals[k] + formula.service_ns(t - (ends[k - 1] if k else start), counts[k])
 
     steps = []
     previous = None

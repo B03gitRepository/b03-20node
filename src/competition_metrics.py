@@ -1,7 +1,8 @@
 """Competition metrics calculated after the episode from delivered evidence and device receipts."""
 from collections import defaultdict
 import json
-from math import ceil, isclose
+from math import isclose
+import b03_formulas as formula
 from pathlib import Path
 
 
@@ -16,13 +17,7 @@ def records(path, *, optional=False):
 
 
 def distribution(values):
-    values = sorted(v for v in values if v is not None)
-    if not values:
-        return {"n": 0, "meanNs": None, "p95Ns": None, "maxNs": None}
-    if values[0] < 0:
-        raise ValueError("Competition clock has a negative interval")
-    return {"n": len(values), "meanNs": sum(values) / len(values),
-            "p95Ns": values[ceil(.95 * len(values)) - 1], "maxNs": values[-1]}
+    return formula.latency_distribution(values)
 
 
 def entity(event):
@@ -40,10 +35,10 @@ def requested_fields_match(attrs, actual, fields):
     return checked > 0
 
 
-LINK_FIELDS = {"delayMs": ("delay_ns", 1e6), "jitterMs": ("jitter_ns", 1e6),
+LINK_FIELDS = {"delayMs": ("delay_ns", formula.NS_PER_MS), "jitterMs": ("jitter_ns", formula.NS_PER_MS),
                "bandwidthBps": ("capacity_bps", 1), "ber": ("ber", 1),
                "packetLossRate": ("packet_loss_rate", 1)}
-SERVICE_FIELDS = {"delayMs": ("delay_limit_s", .001), "jitterMs": ("jitter_limit_s", .001),
+SERVICE_FIELDS = {"delayMs": ("delay_limit_s", 1 / formula.MS_PER_S), "jitterMs": ("jitter_limit_s", 1 / formula.MS_PER_S),
                   "bandwidthBps": ("required_bps", 1), "ber": ("ber_limit", 1),
                   "packetLossRate": ("loss_limit", 1)}
 
@@ -70,7 +65,7 @@ def event_windows(directory, conditions, start, end, stop):
     windows = defaultdict(list)
     next_change = {}
     for index, event in reversed(list(enumerate(events))):
-        stamp = round(event["time"] * 1e9)
+        stamp = formula.seconds_to_ns(event["time"])
         target = entity(event)
         limit = next_change.get(target, stop + 1)
         next_change[target] = stamp
@@ -94,7 +89,7 @@ def accept_report(windows, row, ttl):
     else:
         return
     sampled = report["observed_at_ns"]
-    if not 0 <= arrival - sampled <= ttl:
+    if not formula.fresh_sample(sampled, arrival, arrival, ttl):
         return
     for key in keys:
         for rec in windows.get(key, ()):
@@ -132,7 +127,7 @@ def sensed_events(windows, end):
                 status = "coordinates_absent_from_control_reports"
             values.append({"index": rec["index"], "type": rec["type"], "entity": rec["entity"],
                            "eventNs": rec["eventNs"], "evidenceArrivedNs": arrived,
-                           "delayNs": None if arrived is None else arrived - rec["eventNs"],
+                           "delayNs": formula.elapsed_ns(rec["eventNs"], arrived),
                            "duringDrain": bool(arrived is not None and arrived >= end),
                            "status": status, "evidence": rec["samples"] if arrived is not None else {}})
     # JSON arrays in sealed receipts and in-memory values have the same representation.
@@ -222,17 +217,17 @@ def competition_metrics(directory, summary):
         else:
             seen = evidence.get(key)
         order["evidenceArrivedNs"] = seen
-        order["evidenceToPlanReadyNs"] = ready - seen if seen is not None else None
+        order["evidenceToPlanReadyNs"] = formula.elapsed_ns(seen, ready)
         order["firstWriteIssuedNs"] = first
         order["lastWriteReceivedNs"] = max(deliveries[wid].values(), default=None)
         order["lastDeviceAppliedNs"] = max(applied[wid], default=None)
         order["writeCount"] = len(issued[wid])
         order["deliveredWriteCount"] = len(deliveries[wid])
-        order["readyToFirstIssueNs"] = first - ready if first is not None else None
+        order["readyToFirstIssueNs"] = formula.elapsed_ns(ready, first)
         all_received = bool(first is not None and len(deliveries[wid]) == len(issued[wid]))
         outcome, closed = endings.get(wid, (order["outcome"], None))
         order["outcome"] = outcome
-        order["completeDispatchNs"] = (order["lastWriteReceivedNs"] - first
+        order["completeDispatchNs"] = (formula.elapsed_ns(first, order["lastWriteReceivedNs"])
                                        if all_received and outcome == "work_verified" else None)
         order["signedReadbackNs"] = closed if outcome == "work_verified" else None
     work = list(orders.values())

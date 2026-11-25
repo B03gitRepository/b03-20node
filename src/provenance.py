@@ -421,6 +421,8 @@ def checkout_files(root, native):
         paths.append(root / "train.py")
     if native:
         paths.extend([root / "config/model.json", root / "requirements-model.txt"])
+    if (root / "src/b03_formulas.py").is_file():
+        paths.append(root / "knowledge/formulas-v1.json")
     # A partner factory may delegate to any published helper, including the examples.
     paths.extend((root / "src").rglob("*.py"))
     return {p.relative_to(root).as_posix(): sha256(p) for p in sorted(paths)}

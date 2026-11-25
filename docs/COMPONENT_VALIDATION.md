@@ -1,32 +1,32 @@
-# Archived component work-order regression
+# 历史组件工单回归
 
-Historical public commit [d13e061](https://github.com/B03gitRepository/b03-20node/commit/d13e0610af11f8acfefa880478a964db52dca485) provides the interfaces and examples measured below. Current opening work orders query K044 when authorized unmet demand is present.
+公开提交 [d13e061](https://github.com/B03gitRepository/b03-20node/commit/d13e0610af11f8acfefa880478a964db52dca485) 对应下表使用的接口和样例。当前初配工单发现已授权的待接入需求时会查询 K044。
 
-The accepted parent and four component configurations ran on the same pinned simulator, official input bytes, write scope, seed and measured window. Each row is an actual work-order run. The model rows used frozen parameters.
+父版本与四种组件配置使用同一锁定引擎、同字节官方输入、写权限、随机种子和计分窗。每一行均取自一次实际工单，模型使用冻结参数。
 
-| Configuration | Active RC choices | U (s) | W (weighted s) | Device activations | Verified device queries | RC selection / solver / charged total (s) |
+| 配置 | RC 实际选用工具 | U（业务秒） | W（加权业务秒） | 设备生效次数 | 核验的逐跳读回 | RC 选择／求解／计入业务时钟的总耗时（秒） |
 |---|---|---:|---:|---:|---:|---:|
-| Parent · fixed I | I × 2 | 15.328 | 78.739 | 5 | 104 | 0.0000 / 0.0253 / 0.0253 |
-| Default · fixed I | I × 2 | 15.328 | 78.739 | 5 | 104 | 0.0000 / 0.0312 / 0.0312 |
-| Replacement rule · fixed I | I × 1 | 4.156 | 23.284 | 3 | 78 | 0.0000 / 0.0244 / 0.0401 |
-| Parent · frozen model | C × 2 | 17.000 | 88.123 | 5 | 104 | 0.5983 / 0.0204 / 0.6187 |
-| Default · frozen model | C × 2 | 17.000 | 88.123 | 5 | 104 | 0.5915 / 0.0199 / 0.6114 |
-| Replacement model adapter | C × 2 | 17.000 | 88.123 | 5 | 104 | 0.6154 / 0.0196 / 0.6350 |
+| 父版本 · 固定 I | I × 2 | 15.328 | 78.739 | 5 | 104 | 0.0000 / 0.0253 / 0.0253 |
+| 默认配置 · 固定 I | I × 2 | 15.328 | 78.739 | 5 | 104 | 0.0000 / 0.0312 / 0.0312 |
+| 替换规则 · 固定 I | I × 1 | 4.156 | 23.284 | 3 | 78 | 0.0000 / 0.0244 / 0.0401 |
+| 父版本 · 冻结模型 | C × 2 | 17.000 | 88.123 | 5 | 104 | 0.5983 / 0.0204 / 0.6187 |
+| 默认配置 · 冻结模型 | C × 2 | 17.000 | 88.123 | 5 | 104 | 0.5915 / 0.0199 / 0.6114 |
+| 替换模型适配器 | C × 2 | 17.000 | 88.123 | 5 | 104 | 0.6154 / 0.0196 / 0.6350 |
 
-The original and default routes had identical initial proposals and identical lists of activated paths, rates and epochs. The two frozen adapters used the same weight digests and selected the same first action from the same input and token probabilities. U and W include the packet clock. Each row records its own measured decision time. Required external component checks are charged before dispatch. Trace export time is recorded separately.
+父版本与默认配置给出了相同的初始提案，实际生效的路径、速率和配置代际也一致。两种冻结适配器的权重摘要相同，首步输入、词元概率和所选动作一致。U、W 均计入分组时钟，各行分别记录实测决策耗时。外部组件的必要核查在下发前计时，轨迹导出单独计时。
 
-## Measured interface examples
+## 实测接口样例
 
-These fields come from the replacement runs above. The README commands reproduce the complete local input and output for the partners holding the original scene.
+下表摘自上述替换组件的运行记录。持有原场景的协作者可按首页命令导出完整本地输入与输出。
 
-| Component | Actual input (selected fields) | Actual output (selected fields) |
+| 组件 | 实际输入节选 | 实际输出节选 |
 |---|---|---|
-| Model | Schema `b03.packet.rc-choice.v1`, legal tools `A B C` | Tool `C`, policy version `18` |
-| Rule | Tool `I`, budget `medium`, a snapshot and its work-order authority | 3 service entries, solver audit `residual-first bounded pair search` |
-| Knowledge | ID `K045`, edition `1.0.0` | Packet clock and work-order readback, 3 source references and an applicability field |
+| 模型 | 观测格式 `b03.packet.rc-choice.v1`，合法工具 `A B C` | 工具 `C`，策略版本 `18` |
+| 规则 | 工具 `I`、预算 `medium`、快照及工单授权 | 3 条业务记录，求解审计为 `residual-first bounded pair search` |
+| 知识 | 编号 `K045`，版本 `1.0.0` | 分组时钟与工单读回说明、3 项来源和适用条件 |
 
-The query for K045 in edition 1.1.0 adds the separation of RC compute time, network transit, the score boundary and the drain ledger. It runs without loading model weights.
+知识版 `1.1.0` 中的 K045 补充说明了 RC 计算、网络传输、计分终点和排空期的分别计账。独立查询仅加载知识文件。
 
-## Reproduce
+## 复现
 
-Follow [the setup and six configurations](../README.md). For an independent source-only contract check, run `python -B -m unittest discover -s tests`. Preserve the per-run `CONDITIONS.json`, `RUN_FILES.json` and verifier report to identify the exact input and implementation.
+按[首页的环境与配置说明](../README.md)准备运行。源码契约测试使用 `python -B -m unittest discover -s tests`。每次保留 `CONDITIONS.json`、`RUN_FILES.json` 和核验报告，以定位当时的输入与实现。

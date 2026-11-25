@@ -47,6 +47,8 @@ def main(argv=None, *, on_policy_ready=None):
     run.add_argument("--record-component-io", action="store_true", help="Save exact solver input and output for local reproduction")
     lookup = actions.add_parser("knowledge", help="Read a versioned technical knowledge entry")
     lookup.add_argument("--components", type=Path)
+    lookup.add_argument("--formulas", action="store_true", help="Query the versioned calculation edition")
+    lookup.add_argument("--edition", help="Required formula edition version if specified")
     selector = lookup.add_mutually_exclusive_group(required=True)
     selector.add_argument("--id", dest="identifier")
     selector.add_argument("--topic")
@@ -81,6 +83,16 @@ def main(argv=None, *, on_policy_ready=None):
         print(json.dumps({k: result[k] for k in ("scene", "nodes", "links", "mode", "acceptedPathChecks", "verifiedDeviceQueryCount", "actualModelCalls", "toolChoices", "business", "packets", "verification")}, ensure_ascii=False))
         return
     if args.command == "knowledge":
+        if args.formulas:
+            import b03_formulas as formula
+            if args.components:
+                lookup.error("Formula editions are bound separately from advisory knowledge components")
+            result = formula.lookup(identifier=args.identifier, topic=args.topic,
+                                    version=args.edition if args.edition is not None else formula.EDITION_VERSION)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return
+        if args.edition is not None:
+            lookup.error("--edition selects a --formulas edition")
         from tech_knowledge import query
         components = load_components(args.components).activate("knowledge")
         print(json.dumps(query(components, identifier=args.identifier, topic=args.topic), ensure_ascii=False, indent=2))
@@ -179,6 +191,9 @@ def main(argv=None, *, on_policy_ready=None):
                                policy_identity=chooser.identity if chooser else None)
     implementation = source_identity()
     from integrity import contract_for_mode
+    import b03_formulas as formula
+    identity["formulaBinding"] = formula.receipt_binding(config, implementation)
+    (out / formula.MEMBER).write_bytes(formula.EDITION_BYTES)
     identity["receiptContract"] = contract_for_mode(args.mode)
     json_file(out / "CONDITIONS.json", {**identity, "provenance": proof, "implementationSha256": implementation, "mode": args.mode, "dropInstallAckAtDestination": args.drop_install_ack,
                                        "python": sys.version, "packages": pyenv})

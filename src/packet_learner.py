@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import tempfile
 
+import b03_formulas as formula
 import frozen_policy
 from frozen_policy import FrozenActor, SCHEMA, canonical, file_digest
 
@@ -139,11 +140,11 @@ def unweighted_advantage(credit):
             raise ValueError("Unweighted packet credit must use measured nonnegative integers")
     if credit["fromNs"] >= credit["toNs"]:
         raise ValueError("Credit must follow the sampled decision within the scored window")
-    raw = -credit["actualUnmetServiceNs"] / 1e9
-    control = -credit["fixedIUnmetServiceNs"] / 1e9
+    raw = -formula.ns_to_seconds(credit["actualUnmetServiceNs"])
+    control = -formula.ns_to_seconds(credit["fixedIUnmetServiceNs"])
     if credit.get("rawReturnSeconds") != raw or credit.get("fixedIReturnSeconds") != control:
         raise ValueError("Stored U returns differ from the measured service clock")
-    return (credit["fixedIUnmetServiceNs"] - credit["actualUnmetServiceNs"]) / 1e9
+    return formula.ns_to_seconds(credit["fixedIUnmetServiceNs"] - credit["actualUnmetServiceNs"])
 
 
 class PacketLearner(FrozenActor):

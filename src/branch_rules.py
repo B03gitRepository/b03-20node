@@ -2,7 +2,8 @@
 from copy import deepcopy
 from heapq import heappop, heappush
 
-from b03.solver import EPS, QOS, active_requests, loads, usable
+import b03_formulas as formula
+from b03.solver import EPS, active_requests, loads, usable
 import strong_tools
 from rule_component import bind_proposal, custom_catalog
 
@@ -24,12 +25,9 @@ def _route(request, neighbors, occupied, budget, hop_limit):
             free = params["bandwidthBps"] - occupied[lid] - rate
             if other in nodes or free < -EPS:
                 continue
-            path_delay = delay + params["delayMs"]
-            path_jitter_sq = jitter_sq + params["jitterMs"] ** 2
-            path_ber = min(1.0, ber + params["ber"])
-            path_delivery = delivery * (1.0 - params["packetLossRate"])
-            values = (path_delay, path_jitter_sq ** .5, path_ber, 1.0 - path_delivery)
-            if any(v > demand[k] + EPS for k, v in zip(QOS, values)):
+            path_delay, path_jitter_sq, path_ber, path_delivery = formula.extend_path(
+                 delay, jitter_sq, ber, delivery, params)
+            if formula.exceeds_qos((path_delay, path_jitter_sq, path_ber, path_delivery), demand, EPS):
                 continue
             heappush(queue, (max(neg_free, -free), path_delay, edges + (lid,), nodes + (other,),
                              path_jitter_sq, path_ber, path_delivery))

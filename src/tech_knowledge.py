@@ -225,7 +225,7 @@ def verify_work_order_queries(conditions, events):
         results.append({"work": work, "id": question["id"], "version": identity["version"],
                         "sourceSha256": identity["sourceSha256"], "pending": pending,
                         "disposition": expected["disposition"]})
-    if conditions.get("receiptContract") == "b03.packet.workorder.v2":
+    if conditions.get("receiptContract") in ("b03.packet.workorder.v2", "b03.packet.workorder.v3"):
         from knowledge_ports import verify
         results.extend(verify(conditions, events, _entries(json.loads(raw), identity["version"]), identity))
     elif any("knowledge_contexts" in plan or "rulePatch" in plan.get("solver_audit", {}) for plan in plans):

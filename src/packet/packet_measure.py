@@ -5,18 +5,18 @@ the same nanosecond. All durations use the SimPy clock and a half-open window.
 """
 from __future__ import annotations
 
+import b03_formulas as formula
 import json
 from collections import Counter
 from pathlib import Path
-
 
 
 def request_row(spec):
     return {
         "serviceId": spec.service_id, "srcNodeId": spec.src_node_id, "dstNodeId": spec.dst_node_id,
         "priority": spec.priority, "serviceType": spec.service_type, "category": spec.category,
-        "requirement": {"bandwidthBps": spec.required_bps, "delayMs": spec.delay_limit_s * 1000,
-                        "jitterMs": spec.jitter_limit_s * 1000, "ber": spec.ber_limit,
+        "requirement": {"bandwidthBps": spec.required_bps, "delayMs": formula.seconds_to_ms(spec.delay_limit_s),
+                        "jitterMs": formula.seconds_to_ms(spec.jitter_limit_s), "ber": spec.ber_limit,
                         "packetLossRate": spec.loss_limit},
     }
 
@@ -41,8 +41,8 @@ class BusinessMeter:
                 wire = sim.payload_wire_bps(assignment["allocatedBps"])
                 for lid in assignment["linkIds"]:
                     wires[lid] += wire
-        assess = self.solver.assess(nodes, links, requests, assignments, sim.now / 1e9)
-        overloaded = {lid for lid, load in wires.items() if load > links[lid]["params"]["bandwidthBps"]}
+        assess = self.solver.assess(nodes, links, requests, assignments, formula.ns_to_seconds(sim.now))
+        overloaded = {lid for lid, load in wires.items() if not formula.within_capacity(load, links[lid]["params"]["bandwidthBps"])}
         reasons = {}
         for sid, row in assess["services"].items():
             faults = list(row["reasons"])
@@ -67,20 +67,19 @@ class BusinessMeter:
             return
         loss = x["unmet"]
         weights = x["active"]
-        delta_u = dt * len(loss)
-        delta_w = dt * sum(weights[s] for s in loss)
+        delta_u, delta_w = formula.service_losses(dt, loss, weights)
         self.u_ns += delta_u
         self.w_ns += delta_w
-        self.request_ns += dt * len(weights)
-        self.weighted_request_ns += dt * sum(weights.values())
+        self.request_ns += formula.service_ns(dt, len(weights))
+        self.weighted_request_ns += formula.service_ns(dt, sum(weights.values()))
         for sid in loss:
             self.by_sid[sid] += dt
-        if x["connectedPairFraction"] is not None:
-            self.pair_fraction_ns += x["connectedPairFraction"] * dt
-            self.pair_valid_ns += dt
-        if x["activeEndpointReachableFraction"] is not None:
-            self.endpoint_fraction_ns += x["activeEndpointReachableFraction"] * dt
-            self.endpoint_valid_ns += dt
+        pair, pair_dt = formula.time_fraction(dt, x["connectedPairFraction"])
+        endpoint, endpoint_dt = formula.time_fraction(dt, x["activeEndpointReachableFraction"])
+        self.pair_fraction_ns += pair
+        self.pair_valid_ns += pair_dt
+        self.endpoint_fraction_ns += endpoint
+        self.endpoint_valid_ns += endpoint_dt
         value = {"start_ns": self.last, "end_ns": end, "U_service_ns": delta_u, "W_service_ns": delta_w, **x}
         self.sim.meter_interval(value)
         self.file.write(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n")
@@ -101,9 +100,9 @@ class BusinessMeter:
 
     def close(self):
         self.file.close()
-        return {"U": self.u_ns / 1e9, "W": self.w_ns / 1e9, "requestSeconds": self.request_ns / 1e9,
-                "priorityRequestSeconds": self.weighted_request_ns / 1e9,
-                "UOverRequests": self.u_ns / self.request_ns if self.request_ns else None,
-                "onlinePairConnectedTimeMean": self.pair_fraction_ns / self.pair_valid_ns if self.pair_valid_ns else None,
-                "activeEndpointReachableTimeMean": self.endpoint_fraction_ns / self.endpoint_valid_ns if self.endpoint_valid_ns else None,
-                "unmetSecondsByService": {k: v / 1e9 for k, v in sorted(self.by_sid.items())}}
+        return {"U": formula.ns_to_seconds(self.u_ns), "W": formula.ns_to_seconds(self.w_ns), "requestSeconds": formula.ns_to_seconds(self.request_ns),
+                "priorityRequestSeconds": formula.ns_to_seconds(self.weighted_request_ns),
+                "UOverRequests": formula.ratio(self.u_ns,self.request_ns),
+                "onlinePairConnectedTimeMean": formula.ratio(self.pair_fraction_ns,self.pair_valid_ns),
+                "activeEndpointReachableTimeMean": formula.ratio(self.endpoint_fraction_ns,self.endpoint_valid_ns),
+                "unmetSecondsByService": {k: formula.ns_to_seconds(v) for k, v in sorted(self.by_sid.items())}}

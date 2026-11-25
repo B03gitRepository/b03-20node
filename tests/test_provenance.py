@@ -287,6 +287,9 @@ class EvidenceTests(unittest.TestCase):
         }
 
     def test_sealed_archive_after_removing_provider_and_weights(self):
+        # This synthetic v2 archive predates the formula edition and its two source pins.
+        for member in ("src/b03_formulas.py", "knowledge/formulas-v1.json"):
+            (self.root / member).unlink()
         components = self.components(model=self.registration).activate("model")
         archive = self.capture(components)
         raw = {"net-topo.json": b"topology", "bg-service.json": b"demand", "scripts/script-09.json": b"script"}

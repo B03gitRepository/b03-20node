@@ -1,49 +1,49 @@
-# Joint release acceptance
+# 联合发布验收结果
 
-The two release profiles run the same packet work-order interfaces. The tables and CPU forward times below use the final T136 release1 receipts, with the default device queue. Wall-clock timings vary by host load. The default comparison uses three authorized services, the original requests and QoS, the same seed and the same score window per scale. Each cell describes one measured run. U is unmet service-seconds. W weights unmet seconds by business priority for evaluation. Device queries count native per-hop readbacks through the end of drain.
+两个节点规模共用分组工单接口。以下结果和 CPU 前向耗时来自 T136 release1 的正式回执，使用默认设备队列。壁钟耗时受主机负载影响。每个规模默认对照使用相同的三项授权业务、原始需求和 QoS、随机种子及计分窗。每格为一次实测。U 为未保障业务秒，W 为按优先级加权的未保障业务秒，用于评价。逐跳读回计至排空结束。
 
-| Configuration | 20 nodes · U / W | Tool choices / readbacks | 100 nodes · U / W | Tool choices / readbacks |
+| 配置 | 20 节点 U / W | 工具选择／读回 | 100 节点 U / W | 工具选择／读回 |
 |---|---:|---|---:|---|
-| Fixed I, default components | 15.328 / 78.739 | I × 2 / 104 | 5.563 / 17.026 | I × 1 / 110 |
-| Independent widest-residual rule M | 15.328 / 78.739 | M × 2 / 104 | 4.363 / 13.426 | M × 1 / 110 |
-| Fixed I, alternate knowledge provider | 15.328 / 78.739 | I × 2 / 104 | 4.663 / 14.326 | I × 1 / 110 |
-| Fixed I, link-change reporting adapter | 16.952 / 86.537 | I × 2 / 104 | 5.563 / 17.026 | I × 1 / 110 |
-| Frozen model on CPU, dynamic INT8 | 61.655 / 322.933 | C / C / 104 | 102.000 / 306.000 | A / 0 |
+| 固定 I，默认组件 | 15.328 / 78.739 | I × 2 / 104 | 5.563 / 17.026 | I × 1 / 110 |
+| 独立最大剩余带宽规则 M | 15.328 / 78.739 | M × 2 / 104 | 4.363 / 13.426 | M × 1 / 110 |
+| 固定 I，替换知识检索器 | 15.328 / 78.739 | I × 2 / 104 | 4.663 / 14.326 | I × 1 / 110 |
+| 固定 I，链路变化上报适配器 | 16.952 / 86.537 | I × 2 / 104 | 5.563 / 17.026 | I × 1 / 110 |
+| CPU 冻结模型，动态 INT8 | 61.655 / 322.933 | C / C / 104 | 102.000 / 306.000 | A / 0 |
 
-The default GPU policy and the replacement frozen factory use the same matching weights and legal-action map. The README gives both commands. The archive records actual model calls, decisions, physical activations and signed readbacks.
+默认 GPU 策略和替换的冻结工厂使用匹配的相同权重与合法动作映射。首页给出两种启动方式。归档记录真实模型调用、决策、设备生效与签收读回。
 
-## From delivered evidence to device readback
+## 从证据送达到设备读回
 
-Rows below use the fixed-I work order. Each timing cell shows mean seconds and the number of measured cases in the scoring window. A device-change order needs all distinct writes delivered and a signed readback to enter the dispatch distribution. Per-run coverage and drain-only measurements are recorded separately in the verification JSON.
+下表为固定 I 工单。时间格列出计分窗内的平均秒数和样本数。涉及变更的工单须完成所有不同写指令的交付和签收读回才进入下发分布。核验 JSON 单列每次运行的覆盖情况及排空期数据。
 
-| Nodes | Perception | Generation | Dispatch | Online-pair connectivity | Served share of requested service-seconds |
+| 节点数 | 状态感知 | 策略生成 | 策略下发 | 在线节点对连通率 | 请求业务秒保障比例 |
 |---:|---:|---:|---:|---:|---:|
 | 20 | 1.115 (1) | 1.769 (4) | 2.389 (2) | 100.00% | 93.61% |
 | 100 | 1.109 (1) | 0.739 (4) | 0.419 (1) | 100.00% | 94.55% |
 
-The 100-node pure M run saved 1.200 U and 3.600 W relative to fixed I in this window. The frozen policies retain their registered action mappings. K044 was retrieved at the first delivered, authorized unmet demand in both profiles. The first three authorized open requests were already present in the rule proposal. The knowledge check verified proposal retention and rates. It added zero opening admissions.
+100 节点在此窗口内用规则 M 比固定 I 减少 1.200 未保障业务秒和 3.600 加权业务秒。冻结策略使用各自登记的动作映射。两种规模均在首批已送达的授权未满足需求处查询 K044。前三个授权待接入业务已在原规则提案中。知识核查确认路径保留和原速率，初配补接数为零。
 
-A separately registered simulation adapter increased reporting after a physical port change. It reduced the measured two-endpoint perception time to approximately 0.20 s at both scales. Its 20-node service result is shown in the first table. Faster reports and earlier service recovery are measurable separately.
+另行登记的仿真适配器在端口物理变化后增加上报频次，两个规模的实测双端感知耗时均降至约 0.20 秒。20 节点的业务结果见首表。上报提前与业务恢复提前分别计量。
 
-## Inference and training
+## 推理与训练
 
-The CPU measurements used four threads on an x86-64 Xeon Platinum 8352V, Ubuntu 22.04.1 LTS. All 197 quantized Linear layers executed on each call. The remaining floating-point operations are described in [the model interface](MODEL.md).
-- The 20-node profile processed 2041, 2178 input tokens. Forward time was 8.64, 9.12 s. It recorded 3 signed work orders and 104 device readbacks.
-- The 100-node profile processed 11138 input tokens. Forward time was 77.65 s. It recorded 0 signed work orders and 0 device readbacks.
+CPU 测试使用四线程 x86-64 Xeon Platinum 8352V 和 Ubuntu 22.04.1 LTS。每次推理均实际调用全部 197 个量化线性层。其余浮点运算见[模型接口](MODEL.md)。
+- 20 节点两次输入分别为 2041、2178 个词元，前向耗时 8.64、9.12 秒。记录 3 张签收工单、104 次设备读回。
+- 100 节点输入为 11138 个词元，前向耗时 77.65 秒。签收工单和设备读回均为零。
 
-The 100-node INT8 policy chose a hold in the original 34 s scoring window. The fixed-I row above is the CPU-only baseline that completed device writes and readback. Model loading and forward time depend on the execution host.
+100 节点 INT8 策略在原 34 秒计分窗中选择保持。上表固定 I 的纯 CPU 对照完成了设备写入和读回。加载和前向耗时与执行主机有关。
 
-The online PPO updates were measured on candidate rc04 in two authorized 100-node development episodes. The final release1 verifier and a fresh process reproduced the saved policy. With one sampled decision per episode, the first update changed v374 to v375. The updated policy sampled the next episode before the second update produced v376. All 338 trainable tensors changed on each update. A fresh process reconstructed the final full parameter fingerprint, sampling cursor, next action and behavior probability. The trainer saved a compact replay checkpoint against the pinned full-parameter base. See [training and restoration](MODEL.md).
+100 节点候选 rc04 在两个授权开发回合实测在线 PPO。最终 release1 核验器与新进程复现了保存的策略。每个回合一次采样，第一次更新从 v374 到 v375，新版采样下一回合后第二次更新至 v376。两次更新均改变全部 338 个可训练张量。新进程复原完整参数指纹、采样游标、下一动作和行为概率。训练器在锁定全参基座上保存紧凑回放检查点。[训练与恢复](MODEL.md)
 
-## Whole workload
+## 全业务负载
 
-The same short windows were also run with the entire official service list. The score window remains fixed while solver, dispatch and confirmation consume the packet clock.
+同一短窗还使用完整官方业务列表运行。求解、下发和确认均占用固定计分窗内的分组时钟。
 
-| Nodes | Requested service-seconds | U | W | Native readbacks through drain | Signed before score end |
+| 节点数 | 请求业务秒 | U | W | 至排空结束的原生读回 | 关窗前签收数 |
 |---:|---:|---:|---:|---:|---:|
 | 20 | 3280 | 1649.756 | 5122.760 | 502 | 2 |
 | 100 | 7480 | 7480.000 | 35802.000 | 0 | 0 |
 
-Longer solving can move a configuration beyond the score boundary. A full-service run and a three-service work order have different workloads. Read `coverage` and `includingDrain` when interpreting either one.
+求解耗时可能把配置生效推至关窗后。全业务和三业务工单负载不同，应结合 `coverage` 和 `includingDrain` 解读。
 
-To reproduce the source tests, set `B03_SIMULATOR` to the provider's engine root and run `python -B -m unittest discover -s tests`. Use the [joint integration guide](JOINT_OPTIMIZATION.md) for the partner configuration matrix and the [simulation interface](SIMULATOR.md) for opt-in terminal-cleanup isolation.
+源码测试使用 `python -B -m unittest discover -s tests`，如需外部引擎可设置 `B03_SIMULATOR`。合作方配置矩阵见[联合优化指南](JOINT_OPTIMIZATION.md)，终端清理隔离见[仿真接口](SIMULATOR.md)。

@@ -16,4 +16,4 @@ python collab/knowledge/check.py
 python collab/simulator/check.py
 ```
 
-**系统集成组**维护接口版本、目录映射、回执和公平对照。同一场景比较时固定数据、授权、原始需求、时钟窗口、随机种子和设备流程；将组件清单传给 `run.py run --components ...`，再用 `run.py verify RUN --strict-source --components ...` 复核。双规格的默认工具、OM/RC、A2A、设备写入与读回都走标准运行入口。新工单回执使用 `b03.packet.workorder.v2`。
+**系统集成组**维护接口版本、目录映射、回执和公平对照。同一场景比较时固定数据、授权、原始需求、时钟窗口、随机种子和设备流程；将组件清单传给 `run.py run --components ...`，再用 `run.py verify RUN --strict-source --components ...` 复核。双规格的默认工具、OM/RC、A2A、设备写入与读回都走标准运行入口。新工单以 `b03.packet.workorder.v3` 封存使用的公式版、参数和成员索引。[口径查询](../docs/KNOWLEDGE.md) · [历史回执核验](../docs/PROVENANCE.md)

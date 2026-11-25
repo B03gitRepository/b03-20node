@@ -1,0 +1,255 @@
+{
+  "schema": "b03.formula-edition.v1",
+  "version": "1.0.0",
+  "entries": [
+    {
+      "id": "time.units",
+      "operation": "decimal-time-si",
+      "units": [
+        "s",
+        "ms",
+        "ns"
+      ],
+      "parameters": {
+        "millisecondsPerSecond": 1000,
+        "nanosecondsPerMillisecond": 1000000
+      },
+      "content": "秒、毫秒和纳秒按十进制换算。事件秒转整数纳秒按最近值取整，半值取偶。",
+      "applicability": "所有仿真时钟、规则输入和评价输出。",
+      "topics": [
+        "单位",
+        "时间",
+        "单位换算"
+      ],
+      "sources": [
+        "src/packet/packet_roles.py",
+        "src/competition_metrics.py"
+      ]
+    },
+    {
+      "id": "packet.wire-rate",
+      "operation": "ceil-payload-on-wire",
+      "units": [
+        "bit/s",
+        "byte"
+      ],
+      "parameters": {
+        "payloadBytes": 1000,
+        "epochBytes": 8,
+        "transportBytes": 28
+      },
+      "content": "线路计费速率为载荷速率乘整包字节数除以载荷字节数，按整数向上取整。整包字节数为载荷、代际标记及 IPv4/UDP 头之和。",
+      "applicability": "B03 已验收的分组规格。设备预留使用线路速率，业务需求与交付使用载荷速率。",
+      "topics": [
+        "封包",
+        "带宽",
+        "线路速率"
+      ],
+      "sources": [
+        "simulator/resnet_py/src/resnet/control/policy.py",
+        "src/packet/verify_packet.py"
+      ]
+    },
+    {
+      "id": "path.qos.rules",
+      "operation": "path-moments-capped-ber",
+      "units": [
+        "ms",
+        "bit/s",
+        "ratio"
+      ],
+      "parameters": {
+        "berCeiling": 1
+      },
+      "content": "路径时延求和，抖动取平方和开方，误码率累加后以一封顶，丢包率为一减逐跳成功率乘积，瓶颈带宽取链路最小值。",
+      "applicability": "B03 规则提案和离线规则复核，容量另按共享线路核算。",
+      "topics": [
+        "QoS",
+        "路径",
+        "抖动",
+        "误码率",
+        "丢包率"
+      ],
+      "sources": [
+        "src/rules/vendor/src/b03/solver.py",
+        "src/packet/verify_packet.py"
+      ]
+    },
+    {
+      "id": "path.qos.packet",
+      "operation": "packet-official-additive-ber",
+      "units": [
+        "s",
+        "bit/s",
+        "ratio"
+      ],
+      "parameters": {},
+      "content": "配置时延为传播时延之和，抖动为平方和开方，误码率直接相加，丢包率为一减逐跳成功率乘积。瓶颈为最小线路容量。",
+      "applicability": "锁定引擎的 official 配置核查。收发串行化和实际排队另行计时。",
+      "topics": [
+        "QoS",
+        "分组",
+        "误码率"
+      ],
+      "sources": [
+        "simulator/resnet_py/src/resnet/control/policy.py",
+        "src/packet/resnet_bridge.py"
+      ]
+    },
+    {
+      "id": "path.search-bounds",
+      "operation": "outward-additive-pruning",
+      "units": [
+        "ms",
+        "ms²",
+        "ratio"
+      ],
+      "parameters": {
+        "roundingUlpsPerNode": 32
+      },
+      "content": "剪枝向量采用时延、抖动平方、累加误码率与负对数成功率。阈值按节点数向外扩展浮点误差，最终仍复核原始 QoS。",
+      "applicability": "有界初配补搜和前缀路径扩展。",
+      "topics": [
+        "剪枝",
+        "初配",
+        "路径"
+      ],
+      "sources": [
+        "src/rules/vendor/src/b03/initial_admission.py"
+      ]
+    },
+    {
+      "id": "link.capacity",
+      "operation": "decimal-headroom-and-overload",
+      "units": [
+        "bit/s",
+        "ratio"
+      ],
+      "parameters": {
+        "defaultControlHeadroom": 0.05,
+        "solverEpsilon": 1e-12,
+        "openingEpsilon": 1e-09,
+        "legacyVerifierAllowance": 1e-06
+      },
+      "content": "可用容量为观测容量扣除控制余量后向下取整。提案和执行前缀允许保持已有超载，比较上界为当前容量与原占用的最大值。新设备安装服从当前可用预算。",
+      "applicability": "控制余量以运行实值为准。物理计量和协作合成样例按各自原有的总容量检查。",
+      "topics": [
+        "容量",
+        "超载",
+        "控制余量",
+        "权限"
+      ],
+      "sources": [
+        "src/rules/vendor/src/b03/engine.py",
+        "src/packet/packet_device.py"
+      ]
+    },
+    {
+      "id": "observation.endpoints",
+      "operation": "fresh-dual-endpoints",
+      "units": [
+        "ns",
+        "bit/s",
+        "ratio"
+      ],
+      "parameters": {
+        "defaultObservationTtlNs": 10000000000,
+        "defaultCommandValidityNs": 5000000000
+      },
+      "content": "两端均有已送达且新鲜的可用报告时，容量取小值，时延、抖动、误码率和丢包率取大值。观测年龄等于有效期时仍有效。",
+      "applicability": "OM、RC 与核验共享观测边界。运行回执另存实际有效期。",
+      "topics": [
+        "观测",
+        "双端融合",
+        "有效期"
+      ],
+      "sources": [
+        "simulator/resnet_py/src/resnet/control/observation.py",
+        "src/packet/packet_roles.py"
+      ]
+    },
+    {
+      "id": "business.unserved",
+      "operation": "half-open-service-integral",
+      "units": [
+        "service·ns",
+        "service·s"
+      ],
+      "parameters": {},
+      "content": "半开区间内，U 增量等于时长乘失保业务数，W 增量等于时长乘失保业务的优先级之和。请求量作相同积分。在线奖励为相应区间 U 增量的负值。",
+      "applicability": "U 参与基准训练。W 与优先级加权请求量用于离线评价。",
+      "topics": [
+        "未保障",
+        "业务秒",
+        "奖励",
+        "U",
+        "W"
+      ],
+      "sources": [
+        "src/packet/packet_measure.py",
+        "src/episode_contract.py"
+      ]
+    },
+    {
+      "id": "connectivity.time-mean",
+      "operation": "valid-time-mean",
+      "units": [
+        "ns",
+        "ratio"
+      ],
+      "parameters": {},
+      "content": "在线节点按有序异节点对计数。活跃端点按原始活跃业务逐项计数。分母为零返回空值；按有效持续时间对区间分数加权。",
+      "applicability": "连通度和活跃端点可达率评价。",
+      "topics": [
+        "连通度",
+        "端点",
+        "可达率"
+      ],
+      "sources": [
+        "src/rules/vendor/src/b03/solver.py",
+        "src/packet/packet_measure.py"
+      ]
+    },
+    {
+      "id": "competition.latency",
+      "operation": "nearest-rank-on-completed",
+      "units": [
+        "ns"
+      ],
+      "parameters": {
+        "percentileNumerator": 95,
+        "percentileDenominator": 100
+      },
+      "content": "感知为匹配证据到达减事件时刻；生成从工单所用最新有效证据到方案就绪；下发从首条写指令发出到全部不同写指令抵达设备，须有完整签收。均为仿真纳秒。缺证据保留空值，完整样本报告数量、均值、最近秩 P95、最大值。计分窗口与含排空期分别统计。",
+      "applicability": "状态感知、策略生成、策略下发与签收的赛事评价。",
+      "topics": [
+        "感知",
+        "生成",
+        "下发",
+        "P95"
+      ],
+      "sources": [
+        "src/competition_metrics.py"
+      ]
+    },
+    {
+      "id": "rules.objective",
+      "operation": "priority-counts-then-changes",
+      "units": [
+        "count"
+      ],
+      "parameters": {},
+      "content": "从高到低比较各优先级获配数，平手时选择配置变更最少的方案。有界整数规划使用等价的混合进制系数。",
+      "applicability": "固定优先级规则和联合求解。每次模型选择继续受原动作目录约束。",
+      "topics": [
+        "优先级",
+        "目标函数",
+        "联合求解"
+      ],
+      "sources": [
+        "src/rules/vendor/src/b03/solver.py",
+        "src/rules/strong_tools.py"
+      ]
+    }
+  ]
+}
