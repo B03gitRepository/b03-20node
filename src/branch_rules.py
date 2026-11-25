@@ -26,8 +26,9 @@ def _route(request, neighbors, occupied, budget, hop_limit):
             if other in nodes or free < -EPS:
                 continue
             path_delay, path_jitter_sq, path_ber, path_delivery = formula.extend_path(
-                 delay, jitter_sq, ber, delivery, params)
-            if formula.exceeds_qos((path_delay, path_jitter_sq, path_ber, path_delivery), demand, EPS):
+                delay, jitter_sq, ber, delivery, params)
+            if formula.exceeds_qos((path_delay, path_jitter_sq, path_ber, path_delivery), demand, EPS,
+                                   jitter_root=formula.widest_rule_jitter):
                 continue
             heappush(queue, (max(neg_free, -free), path_delay, edges + (lid,), nodes + (other,),
                              path_jitter_sq, path_ber, path_delivery))

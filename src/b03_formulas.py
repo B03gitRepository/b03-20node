@@ -13,7 +13,7 @@ from pathlib import Path
 import sys
 
 EDITION_PATH = Path(__file__).resolve().parents[1] / "knowledge" / "formulas-v1.json"
-EDITION_SHA256 = "77bfc1f98d91291955aa93148a0303b5cd2a98506183caf93b7c21f8a0ea2be0"
+EDITION_SHA256 = "70870015f5ba084b6a159c5fb46e3995a6562452c97fd120157fbfdc737576fa"
 EDITION_VERSION = "1.0.0"
 MEMBER = "formula-edition.json"
 IMPLEMENTATION = "src/b03_formulas.py"
@@ -66,6 +66,7 @@ OPENING_EPS = _params("link.capacity")["openingEpsilon"]
 _LEGACY_ALLOWANCE = _params("link.capacity")["legacyVerifierAllowance"]
 DEFAULT_TTL_NS = _params("observation.endpoints")["defaultObservationTtlNs"]
 DEFAULT_VALIDITY_NS = _params("observation.endpoints")["defaultCommandValidityNs"]
+_WIDEST_JITTER_ROOT = _params("path.qos.rules")["widestRuleJitterExponent"]
 _PRUNING_ULPS = _params("path.search-bounds")["roundingUlpsPerNode"]
 _RANK = _params("competition.latency")["percentileNumerator"]
 _RANK_DEN = _params("competition.latency")["percentileDenominator"]
@@ -87,11 +88,11 @@ def seconds_to_ns(seconds):
     return round(seconds * NS_PER_S)
 
 
-def wire_bps(payload_bps, payload_bytes=PAYLOAD_BYTES, epoch_bytes=EPOCH_BYTES):
+def wire_bps(payload_bps, payload_bytes=PAYLOAD_BYTES, epoch_overhead_bytes=EPOCH_BYTES):
     if (type(payload_bps) is not int or payload_bps < 0 or type(payload_bytes) is not int
-            or payload_bytes < 1 or type(epoch_bytes) is not int or epoch_bytes < 0):
+            or payload_bytes < 1 or type(epoch_overhead_bytes) is not int or epoch_overhead_bytes < 0):
         raise ValueError("Expected integer packet sizes and a nonnegative payload rate")
-    size = payload_bytes + epoch_bytes + TRANSPORT_BYTES
+    size = payload_bytes + epoch_overhead_bytes + TRANSPORT_BYTES
     return (payload_bps * size + payload_bytes - 1) // payload_bytes
 
 
@@ -118,15 +119,20 @@ def extend_path(delay, jitter_sq, ber, delivery, link):
             min(BER_CEILING, ber + link["ber"]), delivery * (1.0-link["packetLossRate"]))
 
 
-def exceeds_qos(state, requirement, epsilon=0):
+def widest_rule_jitter(squared):
+    """Preserve the independently registered widest-path rule's power rounding."""
+    return squared ** _WIDEST_JITTER_ROOT
+
+
+def exceeds_qos(state, requirement, epsilon=0, *, jitter_root=math.sqrt):
     delay, jitter_sq, ber, survival = state
-    return (delay > requirement["delayMs"] + epsilon or math.sqrt(jitter_sq) > requirement["jitterMs"] + epsilon
+    return (delay > requirement["delayMs"] + epsilon or jitter_root(jitter_sq) > requirement["jitterMs"] + epsilon
             or ber > requirement["ber"] + epsilon or 1.0-survival > requirement["packetLossRate"] + epsilon)
 
 
 def search_vector(link):
     loss = link["packetLossRate"]
-    return (link["delayMs"], link["jitterMs"]**2, link["ber"],
+    return (link["delayMs"], link["jitterMs"] * link["jitterMs"], link["ber"],
             -math.log1p(-loss) if loss < 1.0 else math.inf)
 
 
