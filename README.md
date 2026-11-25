@@ -33,7 +33,9 @@
 | **仿真组** | 通过事件、已送达观测、设备和计量四类公开端口接入分组引擎 | `config/collab-simulator.json` | [仿真组开工](collab/simulator/README.md) |
 | **系统集成组** | OM/RC、A2A、权限目录、方案校验、唯一写入、五指标核验与发版合入 | `config/components.json` | [联调与评分 docs/JOINT_OPTIMIZATION.md](docs/JOINT_OPTIMIZATION.md) |
 
-合作方通过 `--components` 指定配置。新算法可先用固定工具 ID 单独评价。要让已训练的模型选择新工具，应登记目录版本与模型映射，再验证该策略。
+> **⚠️ 关于“可替换”的客观边界**  
+> 只要遵循本组接口契约，就能通过 `--components config/xxx.json` 热替换自家组件，无需改动主控和评测链路。新算法可先用固定工具 ID（如 `--policy X`）独立验证收益；若希望已训练的模型学会调用新工具，则需登记新目录版本与模型映射，并配合重新训练验证。
+
 ---
 
 ## 三、5 分钟跑通最小闭环
@@ -56,8 +58,8 @@ python run.py verify runs/first --report runs/first-check.json
 ```
 
 - **本仓默认配置**：对应官方场景 `data/scenarios/sce20261010-conf02/sce01/`、默认脚本 **`09`**（3 条授权业务、固定工具 `I`、残余准入）；默认参考权重为 **`v18（动作映射 A–C）`**。全量业务可加 `--services all`，更多参数见 `python run.py run --help`。
-- **训练入口说明**：20 节点训练请调用 `src/packet_training.py:run_episode` 采集并核验工单后接入自家优化器；仓库内置的 `train.py step` 参考训练器仅面向 100 节点 `v374` 与脚本 `04/05`。
-- **源码单测**：运行 `python -B -m unittest discover -s tests`（60 项回归测试）。
+- **训练与采样入口**：20 / 100 节点统一通过 `episode.py sample` 与 `episode.py evaluate` 采样工单轨迹并获取 `U / W` 评价，模型组可自由接入自家训练器（详见 [collab/model/README.md](collab/model/README.md)）；内置 `train.py step` 仅面向 100 节点 `v374` 与脚本 `04/05`。
+- **源码单测**：运行 `python -B -m unittest discover -s tests`（76 项回归测试）。
 
 **进阶用法按需查阅**（不在首页堆命令）：
 - 切换各组插件、跑独立规则 `M` 或对比五项指标 → [docs/JOINT_OPTIMIZATION.md](docs/JOINT_OPTIMIZATION.md)
@@ -70,13 +72,14 @@ python run.py verify runs/first --report runs/first-check.json
 ## 四、目录速览与协作红线
 
 ```text
-├── run.py / train.py       # 统一运行、核验、知识查询、样例导出与训练入口
-├── config/                 # 默认组件清单 (components.json) 及各组替换示例配置
-├── src/                    # OM/RC、A2A、唯一设备执行、逐跳读回与各组件适配器实现
-├── simulator/              # 分组网络仿真引擎 resnet_py 纯源码（不含官方数据包）
-├── knowledge/              # 可公开的版本化技术知识 JSON（不含赛事原始数据）
-├── docs/                   # 架构图、交互流程演示页及四组详细接口文档
-└── tests/                  # 60 项源码与契约回归测试
+├── run.py / episode.py / train.py  # 运行核验、统一采样评价与参考训练入口
+├── collab/                         # 四组黑盒开工包（精简契约、合成样例与离线自测 check.py）
+├── config/                         # 默认组件清单 (components.json) 及各组替换示例配置
+├── src/                            # OM/RC、A2A、唯一设备执行、逐跳读回与各组件适配器实现
+├── simulator/                      # 分组网络仿真引擎 resnet_py 纯源码（不含官方数据包）
+├── knowledge/                      # 可公开的版本化技术知识 JSON（不含赛事原始数据）
+├── docs/                           # 架构图、交互流程演示页及四组详细接口文档
+└── tests/                          # 76 项源码与契约回归测试
 ```
 
 **三点协作约定**：
