@@ -30,15 +30,17 @@ def from_observation(conditions, state, expected_diagnosis, plan, request, host_
     diagnosis = roles._diagnose(state, snapshot, ledger, config, allowed, protected)
     diagnosis["authority_mode"] = "all_arrived_registered" if agents.allowed is None else "explicit_whitelist"
     fields = {k:expected_diagnosis.get(k) for k in diagnosis}
-    if (fields != diagnosis or request["authority"] != diagnosis["authority"] or request["snapshot"] != snapshot
+    held = roles._conditional_reservations(state, diagnosis["authority"])
+    if (request.get("conditionalReservations", {}) != held or fields != diagnosis
+            or request["authority"] != diagnosis["authority"] or request["snapshot"] != snapshot
             or host_config != config or plan["policy_hash"] != agents.policy_hash
             or plan["authorized"] != diagnosis["authority"]["executableServiceIds"]
             or state["now_ns"] != plan["time_ns"]):
         raise ValueError("Rule input differs from the sealed OM observation, grant, host config or policy")
-    return roles, snapshot, config
+    return roles, snapshot, config, ledger
 
 
-def verify_final(conditions, plan, state, request, roles, snapshot, config, target):
+def verify_final(conditions, plan, state, request, roles, snapshot, config, ledger, target):
     from rule_patch import check_final
     from strong_tools import digest, validate_proposal
     audit = plan["solver_audit"]
@@ -49,7 +51,8 @@ def verify_final(conditions, plan, state, request, roles, snapshot, config, targ
         from opening import check_opening
         hold = action["tool"] == "hold_current" or action["scope"]["kind"] in ("retain","current")
         target, admission = check_opening(target, snapshot, config, authority,
-                                          conditions["rcPolicy"]["initialAdmission"], hold, rule_request=request)
+                                          conditions["rcPolicy"]["initialAdmission"], hold, rule_request=request,
+                                          rule_output=audit["rulePatch"]["output"])
         if first != admission:
             raise ValueError("Opening supplement did not follow the sealed action and output budgets")
     expected = {}
@@ -72,9 +75,8 @@ def verify_final(conditions, plan, state, request, roles, snapshot, config, targ
     # The public span validator consumes the original common binding as well.
     bound.update(config=config,identity=audit["binding"])
     logical = roles.candidate_scope(bound,bound,target)
-    physical = roles._device_scope(bound,state,target)
-    changed = physical["changedServiceIds"]
+    physical, release, install, projected = roles._device_plan(bound,state,target,ledger,audit)
     if (plan["solver_scope"] != logical or plan["scope"] != physical
-            or plan["release_ids"] != [s for s in changed if s in state["confirmed"]]
-            or plan["install_ids"] != [s for s in changed if target[s] is not None]):
+            or plan["release_ids"] != release or plan["install_ids"] != install
+            or plan["wire_ledger"] != dict(ledger, proposed_wire_bps=projected)):
         raise ValueError("Final rule patch differs from release or installation scope")

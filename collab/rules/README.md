@@ -11,7 +11,7 @@
 
 `snapshot.nodes/links` 是已送达证据构造的可用网络；`requests` 提供优先级、原业务速率 `requiredPayloadBps` 及线路需求 `requirement.bandwidthBps`。求解和配置使用线路 bit/s，时延与抖动使用 ms，误码与丢包为比例。时延相加、抖动平方和开方、误码率求和后以 1 封顶、交付概率连乘。链路可分配容量已扣除控制余量和快照之外的预留，`assignments` 中已有路径仍占用该链路。
 
-`patch` 省略的服务维持当前配置，值 `null` 表示申请释放。只可修改 `scope.serviceIds` 与 `authority.executableServiceIds` 的交集；健康冻结和受保护项保持原样。主控补齐未变业务，绑定工单与快照摘要，验证五项 QoS、容量、跳数、修改数量及设备操作顺序。业务到期由现有生命周期工单释放。
+`patch` 省略的服务维持当前设备配置，值 `null` 表示申请释放。新需求修订到达后，`conditionalReservations`（若有）列出旧代际仍占用的路径和线路速率。显式释放或替换后才能复用这部分容量；服务保障继续按新修订计量。只可修改 `scope.serviceIds` 与 `authority.executableServiceIds` 的交集；健康冻结和受保护项保持原样。主控补齐未变业务，绑定工单与快照摘要，验证五项 QoS、容量、跳数、修改数量及设备操作顺序。业务到期由现有生命周期工单释放。
 
 **预算与审计**　`maxHops/maxChangedServices` 约束实际输出。`path_expansion_budget/search_budget` 等是参考搜索器的工作量参数；其他算法可报告自己真实使用的计数。`audit.usedKnowledge` 可列出实际使用的条目 ID。主控独立计时并将成本计入业务时钟。可在 `rules.options.outputBudgets` 声明命名预算，例如 `{"bounded":{"maxSolverWallMs":800,"maxHops":6}}`，让工具的 `budget` 指向它。主控在返回时检查壁钟期限。
 

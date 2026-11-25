@@ -388,10 +388,26 @@ def _bound(work_id, state, config, diagnosis, snapshot, policy_hash):
             "authority": diagnosis["authority"]}
 
 
-def _device_scope(bound, state, target):
-    # Reapply the original candidate_scope to the actual device configurations,
-    # including demand revision. Same-path reinstalls can change the epoch permit.
+def _conditional_reservations(state, authority):
+    """Superseded verified device epochs that the raw solver snapshot offers conditionally."""
+    result = {}
+    for sid in authority["executableServiceIds"]:
+        ack = state["confirmed"].get(sid)
+        demand = state["services"].get(sid)
+        if ack and demand and ack["configuration_evidence"]["verified"] and _superseded(demand, ack):
+            result[sid] = _assignment(ack["decision"])
+    return result
+
+
+def _device_plan(bound, state, target, ledger, audit):
     writable = set(bound["authority"]["executableServiceIds"])
+    proposal = audit.get("rulePatch")
+    if proposal:
+        # Absence in a patch keeps the installed epoch, even when the logical snapshot
+        # represents a newly revised demand as unassigned. A rejected install cannot
+        # implicitly become a withdrawal of an otherwise untouched prior epoch.
+        intended = set(proposal["output"]["patch"]) | set(audit.get("openingAdmission", {}).get("applied", []))
+        writable &= intended - set(audit.get("strictPacketQosRejected", []))
     before, desired = {}, {}
     for sid in bound["snapshot"]["requests"]:
         ack = state["confirmed"].get(sid)
@@ -402,7 +418,35 @@ def _device_scope(bound, state, target):
             desired[sid] = (dict(target[sid], demandRevision=state["services"][sid]["revision"])
                             if target[sid] is not None else None)
     physical = dict(bound, snapshot=dict(bound["snapshot"], assignments=before))
-    return candidate_scope(physical, physical, desired)
+    scope = candidate_scope(physical, physical, desired)
+    changed = scope["changedServiceIds"]
+    release = [s for s in changed if s in state["confirmed"]]
+    install = [s for s in changed if target[s] is not None]
+    if not proposal:
+        logical_load = loads(bound["snapshot"]["links"], target)
+        final = {lid: logical_load.get(lid, 0) + ledger["fixed_outside_model_bps"].get(lid, 0)
+                 for lid in bound["snapshot"]["links"]}
+    else:
+        request = proposal["input"]
+        budget = request["budgets"]
+        if (set(changed) - set(request["action"]["scope"]["serviceIds"])
+                or len(changed) > budget["maxChangedServices"]
+                or any(len(target[s]["linkIds"]) > budget["maxHops"] for s in install)):
+            raise ValueError("Final device operations exceed the selected action scope or budget")
+        final = {lid:max(ledger["reported_wire_bps"].get(lid, 0), ledger["confirmed_wire_bps"].get(lid, 0))
+                 for lid in bound["snapshot"]["links"]}
+        for sid in release:
+            old = before[sid]
+            for lid in old["linkIds"]:
+                final[lid] -= old["allocatedBps"]
+        touched = set()
+        for sid in install:
+            for lid in target[sid]["linkIds"]:
+                final[lid] += target[sid]["allocatedBps"]
+                touched.add(lid)
+        if any(v < 0 for v in final.values()) or any(final[lid] > ledger["budget_bps"][lid] for lid in touched):
+            raise ValueError("Proposed writes exceed the physical wire budget with retained epochs")
+    return scope, release, install, {lid: value for lid, value in final.items() if value}
 
 
 def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, chooser, om_advice=None):
@@ -432,6 +476,10 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
     elif run_rule:
         from rule_component import begin_sample, external_rules
         rules = external_rules(chooser)
+        if rules is not None and rules.patch_mode:
+            conditional = _conditional_reservations(state, b["authority"])
+            if conditional:
+                b["conditionalReservations"] = conditional
         capture = getattr(chooser, "record_component_io", False)
         timing = {}
         if rules is not None:
@@ -489,7 +537,8 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
             patch_request = audit.get("rulePatch", {}).get("input")
             hold = action["tool"] == "hold_current" or (patch_request is not None and action["scope"]["kind"] in ("retain","current"))
             target, admission = check_opening(target, model, config, b["authority"], chooser.initial_admission, hold,
-                                              rule_request=patch_request)
+                                              rule_request=patch_request,
+                                              rule_output=audit.get("rulePatch", {}).get("output"))
             if knowledge is not None:
                 knowledge["procedureCheck"] = check_opening_advice(knowledge, prior, target, model, b["authority"], admission)
             if admission["applied"]:
@@ -526,15 +575,10 @@ def _resource(work_id, state, model, ledger, config, diagnosis, policy_hash, cho
         from rule_patch import check_final
         check_final(audit["rulePatch"]["input"], target)
     logical_scope = candidate_scope(b, b, target)
-    scope = _device_scope(b, state, target)
-    release_ids = [sid for sid in scope["changedServiceIds"] if sid in state["confirmed"]]
-    install_ids = [sid for sid in scope["changedServiceIds"] if target[sid] is not None]
+    scope, release_ids, install_ids, projected = _device_plan(b, state, target, ledger, audit)
     if set(scope["changedServiceIds"]) - set(writable):
         raise ValueError("Changed service outside work-order authority")
-    final_load = loads(model["links"], target)
-    ledger = dict(ledger, proposed_wire_bps={
-        lid: load + ledger["fixed_outside_model_bps"].get(lid, 0)
-        for lid, load in final_load.items() if load or ledger["fixed_outside_model_bps"].get(lid, 0)})
+    ledger = dict(ledger, proposed_wire_bps=projected)
     if knowledge is not None:
         from tech_knowledge import opening_outcome
         knowledge["disposition"] = opening_outcome(knowledge, audit["openingAdmission"], choices, install_ids)
@@ -872,7 +916,10 @@ class _PacketAgents:
                                      parent_message_id=request["message_id"])
         target = res.pop("target")
         bound = _bound(wid, state, config, diagnosis, model, self.policy_hash)
-        scope = _device_scope(bound, state, target)
+        scope, releases, installs, projected = _device_plan(bound, state, target, ledger, res["solver_audit"])
+        if "rulePatch" in res["solver_audit"] and (releases != res["release_ids"] or installs != res["install_ids"]
+                or projected != res["wire_ledger"]["proposed_wire_bps"]):
+            raise ValueError("OM rejected release, install or wire accounting beyond the rule patch")
         lifecycle = diagnosis.get("lifecycle_release")
         if (res.get("lifecycle_release") != lifecycle
                 or (lifecycle and (res["release_ids"] != lifecycle["release_ids"] or res["install_ids"]))

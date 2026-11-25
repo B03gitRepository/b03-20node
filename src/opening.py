@@ -3,7 +3,7 @@ from b03.initial_admission import find_path
 from b03.solver import active_requests, loads, path_errors, usable
 
 
-def check_opening(target, snapshot, config, authority, mode, hold, *, rule_request=None):
+def check_opening(target, snapshot, config, authority, mode, hold, *, rule_request=None, rule_output=None):
     active = active_requests(snapshot["requests"],snapshot["observedAtSec"])
     missing = [sid for sid in sorted(active,key=lambda s:(-active[s]["priority"],s))
                if sid in authority["executableServiceIds"] and target.get(sid) is None]
@@ -20,11 +20,18 @@ def check_opening(target, snapshot, config, authority, mode, hold, *, rule_reque
         budget = rule_request["budgets"]
         permitted = set(rule_request["action"]["scope"]["serviceIds"])
         config = dict(config, max_path_hops=budget["maxHops"])
-        changed = sum(v != snapshot["assignments"][sid] for sid, v in target.items())
+        conditional = rule_request.get("conditionalReservations", {})
+        explicit = set((rule_output or {}).get("patch", {}))
+        # Previously verified epochs still occupy their links until a specific write
+        # will retire them. A stale epoch cannot silently turn into a repair request.
+        for sid in conditional.keys() - explicit:
+            for lid in conditional[sid]["linkIds"]:
+                occupancy[lid] += conditional[sid]["allocatedBps"]
+        changed = {sid for sid,v in target.items() if v != snapshot["assignments"][sid]} | (conditional.keys() & explicit)
     for sid in missing:
         if rule_request is not None:
-            if hold or sid not in permitted or budget["maxHops"] == 0 or (
-                    changed >= budget["maxChangedServices"] and topped[sid] == snapshot["assignments"][sid]):
+            if hold or sid in conditional or sid not in permitted or budget["maxHops"] == 0 or (
+                    len(changed) >= budget["maxChangedServices"] and sid not in changed):
                 audit["search"].append({"id":sid,"outcome":"deferred","reason":"selected_action_scope_or_output_budget","expanded":0})
                 continue
         req=active[sid]
@@ -42,8 +49,10 @@ def check_opening(target, snapshot, config, authority, mode, hold, *, rule_reque
                 raise ValueError("Residual allocation exceeds available wire capacity")
             occupancy[lid]=after
         if rule_request is not None:
-            old = snapshot["assignments"][sid]
-            changed += int(path != old) - int(topped[sid] != old)
+            if path == snapshot["assignments"][sid]:
+                changed.discard(sid)
+            else:
+                changed.add(sid)
         topped[sid]=path
         audit["feasibleAdditions"].append(sid)
     if mode=="residual" and not hold:

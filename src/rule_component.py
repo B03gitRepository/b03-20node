@@ -279,7 +279,7 @@ def verify_patch_receipt(conditions, registered, plan, diagnosis, evidence, rec,
         raise ValueError("Rule receipt changed its work order, snapshot, clock, action or authority")
     from rule_replay import from_observation, verify_final
     state = evidence["state"]
-    roles, snapshot, config = from_observation(conditions, state, diagnosis, plan, msg, config)
+    roles, snapshot, config, ledger = from_observation(conditions, state, diagnosis, plan, msg, config)
     opts = registered.get("options", {})
     declared = opts.get("outputBudgets",{}).get(action["budget"],{})
     if msg["budgets"] != limits(config,authority,snapshot,declared):
@@ -296,4 +296,4 @@ def verify_patch_receipt(conditions, registered, plan, diagnosis, evidence, rec,
         raise ValueError("Replayed rule patch failed the common QoS/capacity checks")
     if audit["ruleTargetHash"] != strong_tools.digest(target):
         raise ValueError("Replayed rule patch target differs")
-    verify_final(conditions, plan, state, msg, roles, snapshot, config, target)
+    verify_final(conditions, plan, state, msg, roles, snapshot, config, ledger, target)

@@ -68,6 +68,8 @@ def request(bound, *, candidates=None, action=None, budget=None):
                                                            bound["snapshot"], budget or {})}
     if action is not None:
         msg["action"] = action
+        if bound.get("conditionalReservations"):
+            msg["conditionalReservations"] = bound["conditionalReservations"]
         if "knowledgeContext" in bound:
             msg["knowledgeContext"] = bound["knowledgeContext"]
     else:

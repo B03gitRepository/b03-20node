@@ -12,7 +12,8 @@ class Router:
         snapshot, limits = request["snapshot"], request["budgets"]
         routes = snapshot["assignments"]
         occupied = Counter()
-        for route in routes.values():
+        superseded = request.get("conditionalReservations", {})
+        for route in [*routes.values(), *superseded.values()]:
             if route:
                 for link in route["linkIds"]:
                     occupied[link] += route["allocatedBps"]
@@ -35,14 +36,14 @@ class Router:
         for sid in priority_order:
             if len(patch) >= limits["maxChangedServices"] or expanded >= limits["search_budget"]:
                 break
-            old = routes[sid]
+            old = routes[sid] or superseded.get(sid)
             if old:
                 for lid in old["linkIds"]:
                     occupied[lid] -= old["allocatedBps"]
             best, cost = find_path(requests[sid], neighbors, occupied, limits["maxHops"], order,
                                    min(limits["path_expansion_budget"], limits["search_budget"]-expanded))
             expanded += cost
-            if best and best != old:
+            if best and best != routes[sid]:
                 patch[sid] = best
             keep = best or old
             if keep:

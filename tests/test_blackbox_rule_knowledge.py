@@ -33,7 +33,7 @@ def synthetic_state():
             "retained_wire_bps":{},"link_ttl_ns":1000}
 
 
-def scenario(*, scope=None, budget=None, method="X", ports=None, hold_patch=False, delayed=False):
+def scenario(*, scope=None, budget=None, method="X", ports=None, hold_patch=False, delayed=False, state=None, response=None):
     c = load_components(ROOT/"config/collab-rules-knowledge.json").activate(method)
     reg = c.rules["options"]["customTools"]["X"]
     if scope:
@@ -44,8 +44,9 @@ def scenario(*, scope=None, budget=None, method="X", ports=None, hold_patch=Fals
     if ports is not None:
         c.knowledge["bindings"] = {k:{"topic":"detour guidance"} for k in ports}
     chooser = DecisionPolicy(method, components=c)
-    state = synthetic_state()
-    agents = _PacketAgents(["ribbon"],[],0,chooser)
+    state = deepcopy(state) if state is not None else synthetic_state()
+    roster = sorted(state["services"])
+    agents = _PacketAgents(roster,[],0,chooser)
     snapshot = digest(state)
     wid = "example-order"
     captured = {}
@@ -58,11 +59,11 @@ def scenario(*, scope=None, budget=None, method="X", ports=None, hold_patch=Fals
         if delayed:
             import time
             time.sleep(.005)
-        return {"patch":{},"audit":{"expanded":0}}
+        return deepcopy(response) if response is not None else {"patch":{},"audit":{"expanded":0}}
     def run():
         return agents.handle({"kind":"observe","work_id":wid,"snapshot_id":snapshot,"message_id":"stage",
                               "payload":{"state":state,"policy_hash":agents.policy_hash}})
-    if hold_patch:
+    if hold_patch or response is not None:
         with patch("collab_patch_rule.Router.solve_action", empty):
             plan = run()
     else:
@@ -75,7 +76,7 @@ def scenario(*, scope=None, budget=None, method="X", ports=None, hold_patch=Fals
               "work_id":wid,"snapshot_id":snapshot,"state":state}
     cond={"components":c.identity,"rcPolicy":chooser.identity,
           "simulation":{"control":{"control_headroom_fraction":0}},
-          "authority":{"discovery":"explicit_roster","allowedServiceIds":["ribbon"],"protectedServiceIds":[]}}
+          "authority":{"discovery":"explicit_roster","allowedServiceIds":roster,"protectedServiceIds":[]}}
     return c,cond,plan,diagnosis,evidence,captured
 
 
@@ -124,6 +125,59 @@ class Contracts(unittest.TestCase):
         onehop=scenario(hold_patch=True,budget={"maxHops":1})
         self.assertEqual(onehop[2]["decisions"]["ribbon"]["link_path"],["rose"])
         replay(*onehop)
+
+    def test_new_revision_keeps_unmentioned_epoch_and_charge(self):
+        state = synthetic_state()
+        installed = deepcopy(scenario()[2]["decisions"]["ribbon"])
+        installed.update(demand_revision=1, revision=1)
+        state["confirmed"]["ribbon"] = {"decision":installed,"epoch":1,"confirmed_at_ns":20,
+                "configuration_evidence":{"verified":True,"source_mode":"revoked_permit_old_rules"}}
+        charge = {lid:installed["wire_bps"] for lid in installed["link_path"]}
+        state["retained_wire_bps"] = dict(charge)
+        for kwargs in ({"scope":"retain"},{"budget":{"maxChangedServices":0}},{}):
+            result = scenario(state=state,hold_patch=True,**kwargs)
+            plan = result[2]
+            self.assertFalse(plan["decisions"]["ribbon"]["accepted"])
+            self.assertEqual(plan["decisions"]["ribbon"]["demand_revision"],2)
+            self.assertEqual((plan["release_ids"],plan["install_ids"],plan["scope"]["changedServiceIds"]),([],[],[]))
+            self.assertEqual(plan["wire_ledger"]["proposed_wire_bps"],charge)
+            replay(*result)
+            plan["release_ids"] = ["ribbon"]
+            plan["scope"]["changedServiceIds"] = ["ribbon"]
+            with self.assertRaisesRegex(ValueError,"release or installation scope"):
+                replay(*result)
+        replaced = scenario(state=state,budget={"maxChangedServices":1})
+        self.assertEqual(replaced[2]["scope"]["changedServiceIds"],["ribbon"])
+        self.assertEqual((replaced[2]["release_ids"],replaced[2]["install_ids"]),(["ribbon"],["ribbon"]))
+        self.assertTrue(replaced[2]["decisions"]["ribbon"]["accepted"])
+        replay(*replaced)
+        with self.assertRaisesRegex(ValueError,"Final device operations exceed"):
+            scenario(state=state,budget={"maxChangedServices":0},response={"patch":{"ribbon":None}})
+        cleared = scenario(state=state,budget={"maxChangedServices":1},response={"patch":{"ribbon":None}})
+        self.assertEqual((cleared[2]["release_ids"],cleared[2]["install_ids"]),(["ribbon"],[]))
+        replay(*cleared)
+        self.assertEqual(cleared[2]["wire_ledger"]["proposed_wire_bps"],{})
+
+    def test_no_other_service_can_spend_an_unreleased_old_epoch(self):
+        state = synthetic_state()
+        installed = deepcopy(scenario()[2]["decisions"]["ribbon"])
+        installed.update(demand_revision=1, revision=1)
+        state["confirmed"]["ribbon"] = {"decision":installed,"epoch":1,"confirmed_at_ns":20,
+                                       "configuration_evidence":{"verified":True,"source_mode":"revoked_permit_old_rules"}}
+        charge = {lid:installed["wire_bps"] for lid in installed["link_path"]}
+        state["retained_wire_bps"] = dict(charge)
+        for lid,row in state["links"].items():
+            row["capacity_bps"] = charge.get(lid, 20)
+        other = deepcopy(state["services"]["ribbon"])
+        other["service"]["service_id"] = "lantern"
+        state["services"]["lantern"] = other
+        route = {"nodes":installed["node_path"],"linkIds":installed["link_path"],"allocatedBps":installed["wire_bps"]}
+        with self.assertRaisesRegex(ValueError, "physical wire budget"):
+            scenario(state=state, response={"patch":{"lantern":route}})
+        held = scenario(state=state,hold_patch=True)
+        self.assertFalse(held[2]["install_ids"])
+        self.assertEqual(held[2]["wire_ledger"]["proposed_wire_bps"],charge)
+        replay(*held)
 
     def test_actual_cost_cannot_be_replaced_by_self_report(self):
         with self.assertRaisesRegex(ValueError,"measured work-order deadline"):
