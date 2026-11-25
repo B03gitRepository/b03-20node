@@ -85,6 +85,19 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(formula.exceeds_qos(state, limit, formula.EPS), math.sqrt(squared) > threshold)
         self.assertEqual(formula.wire_bps(1000, payload_bytes=1000, epoch_overhead_bytes=8), 1036)
 
+    def test_once_iterable_sequence_subclasses(self):
+        row = dict(delayMs=7, jitterMs=3, ber=.25, packetLossRate=.125, bandwidthBps=200)
+        expected = dict(delayMs=7, jitterMs=3., ber=.25, packetLossRate=.125, bottleneckBps=200)
+        for base in (list, tuple):
+            class OnceIterable(base):
+                def __iter__(self):
+                    if not hasattr(self, "cursor"):
+                        self.cursor = super().__iter__()
+                    return self.cursor
+
+            with self.subTest(base=base.__name__):
+                self.assertEqual(formula.path_metrics(OnceIterable([row])), expected)
+
     def test_priority_ranking_and_change_tiebreak(self):
         requests = {str(i): {"priority": level} for i, level in enumerate([1, 1, 2, 3, 3])}
         current = {key: "old" if key == "1" else None for key in requests}

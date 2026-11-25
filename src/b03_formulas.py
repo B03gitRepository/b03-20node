@@ -120,7 +120,7 @@ _bandwidth = itemgetter("bandwidthBps")
 
 def path_metrics(parts):
     """B03 proposal metrics, using the rule edition’s capped BER."""
-    if not isinstance(parts, (list, tuple)):
+    if type(parts) not in (list, tuple):
         parts = list(parts)
     ber = sum(map(_bit_error, parts))
     return {"delayMs":sum(map(_delay, parts)),

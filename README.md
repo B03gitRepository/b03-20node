@@ -61,7 +61,7 @@ python run.py verify runs/first --report runs/first-check.json
 
 - **本仓默认配置**：对应官方场景 `data/scenarios/sce20261010-conf02/sce01/`、默认脚本 **`09`**（3 条授权业务、固定工具 `I`、残余准入）；默认参考权重为 **`v18（动作映射 A–C）`**。全量业务可加 `--services all`，更多参数见 `python run.py run --help`。
 - **训练与采样入口**：20 / 100 节点统一通过 `episode.py sample` 与 `episode.py evaluate` 采样工单轨迹并获取 `U / W` 评价，模型组可自由接入自家训练器（详见 [collab/model/README.md](collab/model/README.md)）；内置 `train.py step` 仅面向 100 节点 `v374` 与脚本 `04/05`。
-- **源码单测**：运行 `python -B -m unittest discover -s tests`（91 项回归测试）。
+- **源码单测**：运行 `python -B -m unittest discover -s tests`（92 项回归测试）。
 
 **进阶用法按需查阅**（不在首页堆命令）：
 - 切换各组插件、跑独立规则 `M` 或对比五项指标 → [docs/JOINT_OPTIMIZATION.md](docs/JOINT_OPTIMIZATION.md)
@@ -81,7 +81,7 @@ python run.py verify runs/first --report runs/first-check.json
 ├── simulator/                      # 分组网络仿真引擎 resnet_py 源码
 ├── knowledge/                      # 版本化技术知识 JSON
 ├── docs/                           # 架构图、交互流程演示页及四组详细接口文档
-└── tests/                          # 91 项源码与契约回归测试
+└── tests/                          # 92 项源码与契约回归测试
 ```
 
 **三点协作约定**：
