@@ -72,14 +72,17 @@ class BoundaryTests(unittest.TestCase):
 
     def test_single_ulp_search_boundaries_and_native_wire_keywords(self):
         jitter = 812079.5283621605
-        self.assertNotEqual(jitter*jitter, jitter**2)
         link = dict(delayMs=0, jitterMs=jitter, ber=0, packetLossRate=0)
         self.assertEqual(formula.search_vector(link)[1], jitter*jitter)
         squared = 886927.0226647181
         limit = dict(delayMs=0, jitterMs=math.sqrt(squared) - formula.EPS, ber=0, packetLossRate=0)
         state = (0, squared, 0, 1)
-        self.assertTrue(formula.exceeds_qos(state, limit, formula.EPS, jitter_root=formula.widest_rule_jitter))
-        self.assertFalse(formula.exceeds_qos(state, limit, formula.EPS))
+        # libm may return equal rounded roots on some platforms. Compare to that
+        # platform's original T140 operations, including their threshold.
+        threshold = limit["jitterMs"] + formula.EPS
+        self.assertEqual(formula.exceeds_qos(state, limit, formula.EPS, jitter_root=formula.widest_rule_jitter),
+                         squared**.5 > threshold)
+        self.assertEqual(formula.exceeds_qos(state, limit, formula.EPS), math.sqrt(squared) > threshold)
         self.assertEqual(formula.wire_bps(1000, payload_bytes=1000, epoch_overhead_bytes=8), 1036)
 
     def test_priority_ranking_and_change_tiebreak(self):

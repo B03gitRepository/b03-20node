@@ -13,7 +13,7 @@ def build_model(*, checkpoint, tokenizer, device, config):
     ...
 ```
 
-`config` 为解析后的模型登记项，包含 `id`、适配器 `version`、`mode`、`catalogVersion` 和有序 `symbols`。策略若声明符号映射，必须与登记一致。工厂返回的策略通过 `choose` 返回 `(tool_id, details)`。最小 `details` 只需 `policyVersion`，取标识实际策略的非空字符串或非负整数。冻结模型在同一运行中保持版本固定。原生字段 `parameterVersion` 也可使用；同时提供两个字段时取值须一致。
+`config` 为解析后的模型登记项，包含 `id`、适配器 `version`、`mode`、`catalogVersion` 和有序 `symbols`。策略若声明符号映射，必须与登记一致。工厂返回的策略通过 `choose` 返回 `(tool_id, details)`。最小 `details` 只需 `policyVersion`，取标识实际策略的非空字符串或非负整数。冻结模型在同一运行中保持版本固定。原生字段 `parameterVersion` 也可使用。同时提供两个字段时取值须一致。
 
 主控记录已送达的观测、所选工具、适配器 ID 和调用耗时。概率、哈希与 token 数均按实际计算结果填报。`validate_model_choice(choice, policy_identity)` 依据 `CONDITIONS.rcPolicy` 核验归档的 `tool_choice`。
 

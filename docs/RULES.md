@@ -23,7 +23,7 @@ python run.py examples runs/residual-example --components config/example-rules.j
 | `enumerate_actions(snapshot, authority, config, history=None)` | 枚举可用的结构化动作，逐项声明登记 ID、方法、含业务 ID 的作用域、候选池、预算和阶段。控制器使用本次已送达报告及权限构造动作目录并核对这些字段。 |
 | `solve_action(action, bound, context=None)` | 返回 `(target, audit)`。`bound['snapshot']['requests']` 中每项业务均须出现，取值为 `None` 或含有 `nodes`、`linkIds`、`allocatedBps` 的路径。以 `rule_component.bind_proposal(action, bound, target, audit)` 将结果绑定于本工单、快照、权限、预算配置、所选动作及目标。 |
 
-`bound` 携带 `identity`、`snapshot`、`authority` 和 `config`。快照包含已观测节点和链路、请求、当前分配及观测时刻。分配单位为线速 bit/s，每项请求还保留原始有效载荷速率。返回完整所需线速并满足时延、抖动、BER、丢包约束。可用容量已扣留既有预留和控制余量。健康及受保护业务保持原配置，只能更改所选工具获准写入的业务。提供方可实现工具目录的子集；使用固定或组合策略时应提供该策略在活动工单中选择的符号。
+`bound` 携带 `identity`、`snapshot`、`authority` 和 `config`。快照包含已观测节点和链路、请求、当前分配及观测时刻。分配单位为线速 bit/s，每项请求还保留原始有效载荷速率。返回完整所需线速并满足时延、抖动、BER、丢包约束。可用容量已扣留既有预留和控制余量。健康及受保护业务保持原配置，只能更改所选工具获准写入的业务。提供方可实现工具目录的子集。使用固定或组合策略时应提供该策略在活动工单中选择的符号。
 
 控制器传递隔离的输入，为每个决策器保存私有求解上下文。枚举时提供上下文副本。求解器可以跨工单缓存路径。控制器依据本次快照独立核验业务名单、可写范围、路径契约、变更预算及声明的搜索次数。设备下发前仍执行初配准入与原生分组 QoS 检查。
 
@@ -106,9 +106,9 @@ RC 直接生成释放计划。回执中 `tool_choice.method="lifecycle"`、`sele
 
 `--record-component-io` 在 `b03_rc_plan.component_io` 保存实际动作、目录、已绑定输入、调用前上下文及原始目标与审计。该返回值记录在初配准入与分组 QoS 核验前，同一条记录中的求解审计及设备计划显示后续修正。`examples` 从已核验工单提取样例。
 
-对外部求解器，从绑定工单到最终计划组装的 RC 耗时计入下发时钟，可选样例复制耗时单列。`decision_wall_ns` 等于 `tool_choice.selectionWallNs + solver_wall_ns + component_timing.chargedComponentWallNs`。`solver_wall_ns` 含求解器调用和初配准入；其余计费含准备、目录枚举与核验、输入隔离、独立提案核验及最终计划检查。`component_timing` 另列 `setupWallNs`、`catalogHookWallNs`、`catalogGuardWallNs`、`solverHookWallNs`、`proposalGuardWallNs`、`postProposalWallNs`，其中时间已包含在计费总量内。`sampleCopyWallNs` 在下发时钟外记录，提案返回后才进行传输和日志写入。
+对外部求解器，从绑定工单到最终计划组装的 RC 耗时计入下发时钟，可选样例复制耗时单列。`decision_wall_ns` 等于 `tool_choice.selectionWallNs + solver_wall_ns + component_timing.chargedComponentWallNs`。`solver_wall_ns` 含求解器调用和初配准入。其余计费含准备、目录枚举与核验、输入隔离、独立提案核验及最终计划检查。`component_timing` 另列 `setupWallNs`、`catalogHookWallNs`、`catalogGuardWallNs`、`solverHookWallNs`、`proposalGuardWallNs`、`postProposalWallNs`，其中时间已包含在计费总量内。`sampleCopyWallNs` 在下发时钟外记录，提案返回后才进行传输和日志写入。
 
-内置求解器沿用 `decision_wall_ns = tool_choice.selectionWallNs + solver_wall_ns`。外部求解器的 `setupWallNs` 含绑定工单和首次初始化。`catalogGuardWallNs` 和 `proposalGuardWallNs` 含接口调用所需的控制端准备及校验；`postProposalWallNs` 含分组 QoS、设备计划、线速账及快照摘要。汇总时直接用正式计费总量。
+内置求解器沿用 `decision_wall_ns = tool_choice.selectionWallNs + solver_wall_ns`。外部求解器的 `setupWallNs` 含绑定工单和首次初始化。`catalogGuardWallNs` 和 `proposalGuardWallNs` 含接口调用所需的控制端准备及校验。`postProposalWallNs` 含分组 QoS、设备计划、线速账及快照摘要。汇总时直接用正式计费总量。
 
 ## 重演导出的 I 提案
 
