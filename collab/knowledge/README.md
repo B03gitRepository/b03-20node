@@ -4,6 +4,8 @@
 
 知识库组负责提供版本化、只读的技术知识检索组件（契约版本 `b03.knowledge.lookup.v2`）。组件基于锁定的知识版实现按编号精确查找或按主题自主召回与排序；宿主按配置将检索结果组装后注入 OM、规则或模型环节，知识条目不改变写权限或原始 QoS 需求。
 
+此外，链路共用的底层计算口径单独维护在[底层计算公式知识版](../../knowledge/formulas-v1.json)中（见第三节第 3 点），便于统一核查与全链路直接调用。
+
 ---
 
 ## 二、通用接口：启动初始化与知识版格式
@@ -36,7 +38,7 @@ build_knowledge(*, config, library) -> provider
 
 ---
 
-## 三、两条查询分支与三个接入环节
+## 三、两条查询分支、三个接入环节与底层公式知识版
 
 ### 1. `lookup(*, identifier=None, topic=None) -> list[str]` 两条查询分支
 
@@ -46,8 +48,6 @@ build_knowledge(*, config, library) -> provider
 |---|---|---|---|
 | **分支 A：按编号精确查找** | `identifier="<ID>"`, `topic=None` | 本版存在该编号时返回 `[identifier]`，否则返回 `[]` | 返回对应单条 6 字段条目（含 `id`、`topics`、`content`、`sources`、`applicability`、`version`）；知识版摘要记录于工单回执 `knowledge_contexts[port].component.sourceSha256` |
 | **分支 B：按主题召回与排序** | `identifier=None`, `topic="<查询词>"` | 自主召回并排序后的本版唯一 ID 列表（允许 `[]`；可接入关键词、向量检索或外部服务） | 严格按返回 ID 顺序组装同版 6 字段条目（含 `version`）；知识版摘要记录于工单回执 `knowledge_contexts[port].component.sourceSha256` |
-
-规范计算口径、单位和适用条件可通过 `python run.py knowledge --formulas --topic 容量` 查询。版本登记及调用方式见[知识说明](../../docs/KNOWLEDGE.md)。
 
 ### 2. 三个接入环节挂载规则（`knowledge.bindings`）
 
@@ -59,7 +59,23 @@ build_knowledge(*, config, library) -> provider
 | `rules` | 规则求解调用 `solve_action` 前 | `request["knowledgeContext"]` | 所选工具由 v2 规则插件处理且声明 `rules.options.acceptKnowledge: true` |
 | `model` | RC 构造模型因果观测时 | `observation["knowledgeContext"]` | 模型插件须显式声明 `model.options.acceptKnowledge: true`；内置冻结模型保持原始输入不变 |
 
+**当前启用状态说明**：默认配置（`config/components.json`）下上述三个接入环节均未开启；仓内仅在示例配置 `config/collab-rules-knowledge.json` 中用 `rules` 环节示范了路径排序提示（`EX.PATH.DELAY` / `EX.PATH.HOPS`），`om` 与 `model` 环节已打通接口与核验但尚未内置具体业务知识，后续可根据各组明确的需求补充内容或扩展接口。
+
 各入口的查询请求、排序结果、知识版来源、绑定快照与耗时记录在工单 `knowledge_contexts` 中；首单残余准入核查（`K044`）继续保留独立记录 `knowledge_io`。离线 `run.py verify` 会按归档知识版逐项复核条目内容、授权快照与注入位置。
+
+### 3. 底层计算公式知识版（存放位置与单列原因）
+
+单位换算、封包速率折算、路径 4 维 QoS 合成、链路容量与超载守卫、双端观测融合、`U/W` 与五项赛题指标、规则目标函数等 11 项规范口径，独立维护于：
+
+- **公式声明与参数**：[knowledge/formulas-v1.json](../../knowledge/formulas-v1.json)（只存结构化声明、单位、参数与适用条件，不含可执行代码）
+- **统一计算实现**：[src/b03_formulas.py](../../src/b03_formulas.py)（启动时读取并校验上述 JSON，供主控、规则、计量与核验模块统一调用）
+- **版本登记与扩展说明**：[docs/KNOWLEDGE.md](../../docs/KNOWLEDGE.md)
+
+**为什么将底层计算公式单列，而不并入 `om` / `rules` / `model` 三个可选接入环节**：
+
+1. **全链路必选且须强一致**：底层公式决定构图单位、QoS 判定、容量约束与评分核验的客观口径，所有模块默认必须执行同一套标准，不能像业务策略建议那样按配置开关或仅在个别环节生效。
+2. **高频计算性能与确定性**：求解与计量在单次工单中会被调用数千至上万次；单列后系统可在启动阶段一次性校验摘要并绑定内存计算函数，热循环零 JSON 检索开销。
+3. **独立版本与回执溯源**：公式版随每次工单独立归档声明与生效参数（`formula-edition.json`），与业务经验知识（`technical-v1.json`、`collab-routing.json`）解耦，方便知识库组与系统集成组各自独立演进和审计。
 
 ---
 
@@ -92,8 +108,9 @@ build_knowledge(*, config, library) -> provider
 
 ### 2. 仓内完整实现与知识版索引
 
-| 用途与模式 | 参考源码 / 知识版 | 配套配置 |
+| 用途与模式 | 参考源码 / 知识版 | 配套配置 / 绑定代码 |
 |---|---|---|
+| 底层计算公式知识版（11 项默认规范口径） | [formulas-v1.json](../../knowledge/formulas-v1.json) | [b03_formulas.py](../../src/b03_formulas.py)（全链路默认绑定） |
 | 主题召回与可调排序参考实现（`b03.knowledge.lookup.v2`） | [collab_ranked_knowledge.py](../../src/collab_ranked_knowledge.py) | [collab-rules-knowledge.json](../../config/collab-rules-knowledge.json) / [collab-ranked-hops.json](../../config/collab-ranked-hops.json) |
 | 协作路径排序示例知识版（`2.0.0`） | [collab-routing.json](../../knowledge/collab-routing.json) | [collab-rules-knowledge.json](../../config/collab-rules-knowledge.json) |
 | 默认技术知识版（v1 / v2） | [technical-v1.json](../../knowledge/technical-v1.json) / [technical-v2.json](../../knowledge/technical-v2.json) | [components.json](../../config/components.json) / [knowledge-v2.json](../../config/knowledge-v2.json) |
@@ -115,10 +132,14 @@ python -I collab/knowledge/check.py --provider path/to/your_knowledge.py --facto
 ### 2. 独立检索与真实工单联调（需配置基础依赖与 `B03_DATA`）
 
 ```sh
-# 1. 单独验证主题召回与排序结果
+# 1. 查询底层计算公式知识版（按主题或编号）
+python run.py knowledge --formulas --topic 容量
+python run.py knowledge --formulas --id packet.wire-rate
+
+# 2. 单独验证业务知识主题召回与排序结果
 python run.py knowledge --components config/collab-rules-knowledge.json --topic "detour guidance"
 
-# 2. 接入真实工单并严格核验（可切换 config/collab-ranked-hops.json 对比排序差异）
+# 3. 接入真实工单并严格核验（可切换 config/collab-ranked-hops.json 对比排序差异）
 python run.py run --policy X --components config/collab-rules-knowledge.json --output runs/ranked
 python run.py verify runs/ranked --components config/collab-rules-knowledge.json --strict-source
 ```
