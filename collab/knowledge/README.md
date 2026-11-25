@@ -23,8 +23,6 @@ build_knowledge(*, config, library) -> provider
 
 返回的 `provider` 对象须实现 `lookup(*, identifier=None, topic=None)`。在 `b03.knowledge.lookup.v2` 契约下，同一进程内沿用本版缓存索引；更换知识版时须同步更新配置中的 `source` 与 `version`。
 
-规范计算口径、单位和适用条件可通过 `python run.py knowledge --formulas --topic 容量` 查询。版本登记及调用方式见[知识说明](../../docs/KNOWLEDGE.md)。
-
 ### 2. 知识版 `library` 数据结构
 
 | 层级 | 字段 | 要求与说明 |
@@ -92,8 +90,6 @@ build_knowledge(*, config, library) -> provider
 - `bindings`：按需启用 `om`、`rules`、`model` 中任意一个或多个入口。
 - `options`：透传给 `build_knowledge` 的自定义参数。独立安装包或外部依赖登记见 [docs/ASSETS.md](../../docs/ASSETS.md)、[docs/PROVENANCE.md](../../docs/PROVENANCE.md) 及完整契约 [docs/KNOWLEDGE.md](../../docs/KNOWLEDGE.md)。
 
-规范计算口径、单位和适用条件可通过 `python run.py knowledge --formulas --topic 容量` 查询。版本登记及调用方式见[知识说明](../../docs/KNOWLEDGE.md)。
-
 ### 2. 仓内完整实现与知识版索引
 
 | 用途与模式 | 参考源码 / 知识版 | 配套配置 |
@@ -115,8 +111,6 @@ build_knowledge(*, config, library) -> provider
 python -I collab/knowledge/check.py
 python -I collab/knowledge/check.py --provider path/to/your_knowledge.py --factory build_knowledge
 ```
-
-规范计算口径、单位和适用条件可通过 `python run.py knowledge --formulas --topic 容量` 查询。版本登记及调用方式见[知识说明](../../docs/KNOWLEDGE.md)。
 
 ### 2. 独立检索与真实工单联调（需配置基础依赖与 `B03_DATA`）
 
