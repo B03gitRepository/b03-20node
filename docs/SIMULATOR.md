@@ -33,7 +33,7 @@ python run.py verify runs/local-probes --strict-source \
 
 ## 原生 v1 提供方接口
 
-原生 v1 仿真组件登记 `id`、`version`、`contractVersion`、`entrypoint` 和可选 JSON 对象 `settings`，契约为 `b03.packet-simulator.v1`，入口为可导入的 Python 工厂。新接入优先使用上文四个公开端口。
+原生 v1 仿真组件登记 `id`、`version`、`contractVersion`、`entrypoint` 和可选 JSON 对象 `settings`，契约为 `b03.packet-simulator.v1`，入口为可导入的 Python 初始化函数。新接入优先使用上文四个公开端口。
 
 ```json
 {
@@ -69,7 +69,7 @@ python run.py verify runs/local-probes --strict-source \
 hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 ```
 
-使用合作方清单及实际引擎路径运行，通过 `--data` 或 `B03_DATA` 显式提供官方数据。运行前后均核对所选引擎。封存内容包括引擎锁原字节、适配器身份、运行时指纹、原输入及分组回执。档案核验直接读取这些记录，严格核验还对照已安装引擎、源码、登记资产及依赖。
+使用合作方清单及实际引擎路径运行，通过 `--data` 或 `B03_DATA` 显式提供官方数据。运行前后均核对所选引擎。归档内容包括引擎锁原字节、适配器身份、运行时指纹、原输入及分组回执。档案核验直接读取这些记录，严格核验还对照已安装引擎、源码、登记资产及依赖。
 
 含 `node_move` 的官方脚本通过 `--data` 载入时使用 `endpoint_at_event`。原生事件批次在事件时刻把节点放到指定终点坐标。官方输入未提供移动持续区间，链路变化由脚本提供的链路事件及引擎设备状态驱动。评价器轨迹中的坐标只属于物理事件证据。角色观测仍须由分组送达。
 

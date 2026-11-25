@@ -6,14 +6,14 @@
 
 ## 适配器接口
 
-在组件清单中将 `model.entrypoint` 设为 `module:factory`。运行器为每个策略实例调用一次工厂。
+在组件清单中将 `model.entrypoint` 设为 `模块路径:初始化函数名`（如 `module:build_model`）。运行器为每个策略实例调用一次该初始化函数。
 
 ```python
 def build_model(*, checkpoint, tokenizer, device, config):
     ...
 ```
 
-`config` 为解析后的模型登记项，包含 `id`、适配器 `version`、`mode`、`catalogVersion` 和有序 `symbols`。策略若声明符号映射，必须与登记一致。工厂返回的策略通过 `choose` 返回 `(tool_id, details)`。最小 `details` 只需 `policyVersion`，取标识实际策略的非空字符串或非负整数。冻结模型在同一运行中保持版本固定。原生字段 `parameterVersion` 也可使用。同时提供两个字段时取值须一致。
+`config` 为解析后的模型登记项，包含 `id`、适配器 `version`、`mode`、`catalogVersion` 和有序 `symbols`。策略若声明符号映射，必须与登记一致。初始化函数返回的策略通过 `choose` 返回 `(tool_id, details)`。最小 `details` 只需 `policyVersion`，取标识实际策略的非空字符串或非负整数。冻结模型在同一运行中保持版本固定。原生字段 `parameterVersion` 也可使用。同时提供两个字段时取值须一致。
 
 主控记录已送达的观测、所选工具、适配器 ID 和调用耗时。概率、哈希与 token 数均按实际计算结果填报。`validate_model_choice(choice, policy_identity)` 依据 `CONDITIONS.rcPolicy` 核验归档的 `tool_choice`。
 
@@ -25,7 +25,7 @@ def build_model(*, checkpoint, tokenizer, device, config):
 
 使用 `--policy model --components config/example-model.json`，指定与内置模型相同的检查点、分词器和设备。`example_model:build_model` 加载已登记的 `FrozenActor`，调用原有前向和贪心选择。两种适配器都记录权重版本、输入 token 数与哈希、合法动作的 softmax 分布、行为概率及各自的 `adapterId`。
 
-用 `--record-component-io` 跑完工单后，把 `RUN` 换成已封存的运行目录，并指定生成它的组件清单。
+用 `--record-component-io` 跑完工单后，把 `RUN` 换成已完成的运行目录，并指定生成它的组件清单。
 
 ```console
 python run.py examples RUN --components config/example-model.json
@@ -77,11 +77,11 @@ python train.py restore --workspace runs/ppo --round 2 --checkpoint "$B03_BASE" 
   --tokenizer "$B03_TOKENIZER" --device cuda --report runs/ppo/fresh-restore.json
 ```
 
-各轮分别用固定 I 与重新采样的策略运行标准的 A2A、OM/RC 分组工单。工厂接收登记的合法符号。参考行为分布由 75% 策略概率和 25% 合法动作均匀概率组成。训练日志保存旧分布、所选概率、决策版本、完整观测和 token ID。
+各轮分别用固定 I 与重新采样的策略运行标准的 A2A、OM/RC 分组工单。初始化函数接收登记的合法符号。参考行为分布由 75% 策略概率和 25% 合法动作均匀概率组成。训练日志保存旧分布、所选概率、决策版本、完整观测和 token ID。
 
 仅评价窗口内至少有两个合法工具的采样参与更新。原始回报为从该次决策至评价终点的未保障业务数积分取负，单位为业务秒。同窗口固定 I 回报作为基线，对全参数执行一步带裁剪 PPO。优化器只接收两组未加权 U 回报，W 单独用于业务评价。
 
-每轮保存封存的 `sampled` 工单和 `fixed-I` 对照、各自的核验结果及 `round-NNN.json` 回执。回执的相对路径可定位匹配档案。用 `python run.py verify PATH` 检查封存工单。严格源码核验还需提供该次 `components.json`、仿真器、v374 基础检查点、分词器和已登记的前序重演快照。
+每轮保存归档的 `sampled` 工单和 `fixed-I` 对照、各自的核验结果及 `round-NNN.json` 回执。回执的相对路径可定位匹配档案。用 `python run.py verify PATH` 检查归档工单。严格源码核验还需提供该次 `components.json`、仿真器、v374 基础检查点、分词器和已登记的前序重演快照。
 
 `ppo-replay.json` 是原子写入的工作日志。每份 `round-NNN-replay.json` 是不可变重演检查点，包含采样游标、输入、结果、优化器设置和参数哈希，主控写入此类检查点无需额外完整模型副本。用相同基础权重、代码、数值环境和设备重建参数。`restore` 对照更新后的现场记录核验完整指纹、下一次动作、概率和游标。以相同参数重提已完成的轮次会核验原身份。若进程在提交日志后停止，重试可补完回执。
 

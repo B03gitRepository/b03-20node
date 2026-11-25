@@ -8,9 +8,9 @@
 
 ## 二、通用接口：启动初始化与单步输入
 
-### 1. 启动工厂函数
+### 1. 启动初始化函数
 
-组件模块须暴露可调用工厂函数（默认名 `build_model`，可通过配置中的 `model.entrypoint` 指定）：
+组件模块须提供初始化入口函数（默认名 `build_model`，可通过配置中的 `model.entrypoint` 指定）：
 
 ```text
 build_model(*, checkpoint, tokenizer, device, config) -> actor
@@ -89,7 +89,7 @@ build_model(*, checkpoint, tokenizer, device, config) -> actor
      - **单步轨迹 `steps[i]`**：`observation`、`action`、`policyVersion`、组件实际记录的概率与采样字段（`behaviorProbability`、`behaviorProbabilities`、`oldLogProbability`、`sampleId` 按需透传）、`untilNs`（至下一次决策或计分窗终点时刻）、`rewardUnweightedServiceNs`（该区间负未加权未保障业务纳秒数；同时刻连续决策可出现 `0`）、`terminal`（是否为末步）。
      - **奖励守恒**：`prefixUnweightedServiceNs - sum(step["rewardUnweightedServiceNs"]) == unmetServiceNs`，除以 `1e9` 与离线核验的 `U` 精确一致。
    - **训练脚本白名单与评价分离**：20 节点允许 `01 / 02 / 04 / 05`，100 节点允许 `04 / 05`，支持 `--services`、`--start`、`--end`、`--drain` 指定训练窗口。无权重 `U` 用于基准训练；加权指标 `W` 与五项赛题指标通过 `episode.py evaluate`（返回 `schema: "b03.episode.evaluation.v1"`，含 `business`、`competitionMetrics`、`toolChoices`、`modelCalls`、`readbacks`、`solverWallNs`、`selectionWallNs`）独立评价。
-   - **训练器分工**：模型组可使用任意自研或第三方训练器消费 `episode.py sample` 输出并迭代权重。仓内 [train.py](../../train.py) 仅作为 100 节点 `v374` 的内置在线 PPO 参考实现，详见 [docs/MODEL.md](../../docs/MODEL.md)。
+   - **训练器分工**：模型组可使用任意自研或第三方训练器读取 `episode.py sample` 输出的轨迹并迭代权重。仓内 [train.py](../../train.py) 仅作为 100 节点 `v374` 的内置在线 PPO 参考实现，详见 [docs/MODEL.md](../../docs/MODEL.md)。
 
 ---
 
@@ -112,7 +112,7 @@ build_model(*, checkpoint, tokenizer, device, config) -> actor
 
 - `extends`：继承默认组件清单 [config/components.json](../../config/components.json)。
 - `id` / `version`：组件唯一标识与版本号（写入运行回执）。
-- `entrypoint`：可导入的 `模块路径:工厂函数名`。
+- `entrypoint`：可导入的 `模块路径:初始化函数名`。
 - `mode`：运行分支，取 `"frozen"` 或 `"online-ppo"`。
 - `symbols`：组件支持的工具 ID 有序列表，须为已登记目录的子集。
 - `options.acceptKnowledge`（可选）：设为 `true` 且配置 `knowledge.bindings.model` 时接收 `observation["knowledgeContext"]`。外部依赖包与资产登记见 [docs/MODEL.md](../../docs/MODEL.md) 与 [docs/PROVENANCE.md](../../docs/PROVENANCE.md)。

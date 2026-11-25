@@ -48,8 +48,8 @@ python run.py verify runs/index-work --strict-source --components config/example
 python run.py examples runs/index-work --output runs/index-io.json
 ```
 
-按首页设置输入数据与引擎即可复现。`b03_rc_plan.knowledge_io` 保存检索器、知识源摘要、问题、返回条目、技术核查及处理结果。`examples` 在 `knowledge` 字段导出真实回执。`verify` 按归档知识版、OM 授权、送达需求、初配审计和最终设备计划核验。归档核验可在没有原检索器的机器上运行。严格核验使用原组件与依赖。场景产生的明细轨迹随授权运行资产保存。[归档核验](PROVENANCE.md)
+按首页设置输入数据与引擎即可复现。`b03_rc_plan.knowledge_io` 保存检索器、知识源摘要、问题、返回条目、技术核查及处理结果。`examples` 在 `knowledge` 字段导出真实回执。`verify` 按归档知识版、OM 授权、送达需求、初配审计和最终设备计划核验。归档核验可在没有原检索器的机器上运行。严格核验使用原组件与依赖。场景产生的明细轨迹保存在本地或团队服务器即可。[归档核验](PROVENANCE.md)
 
 ## 查询计算公式
 
-`python run.py knowledge --formulas --id packet.wire-rate` 返回公式的操作标识、参数、单位、适用条件、来源、版本和摘要。可用 `--topic 容量` 按主题查询，或用 `--edition 1.0.0` 指定版本。11 个公式编号与定义保存在[计算口径知识版](../knowledge/formulas-v1.json)。控制器、规则、计量与核验绑定同一版[计算函数](../src/b03_formulas.py)。新工单随回执封存公式声明和生效参数。公式查询与 OM、规则、模型的可选知识注入独立。新增口径时登记新编号或版本，并补齐相应计算实现、数值用例与回执读取分支，保留旧版声明及历史读验。后续智能体可通过相同的编号或主题查询取得带来源的结果，是否采纳仍由工单权限和所选策略决定。
+`python run.py knowledge --formulas --id packet.wire-rate` 返回公式的操作标识、参数、单位、适用条件、来源、版本和摘要。可用 `--topic 容量` 按主题查询，或用 `--edition 1.0.0` 指定版本。11 个公式编号与定义保存在[计算口径知识版](../knowledge/formulas-v1.json)。控制器、规则、计量与核验绑定同一版[计算函数](../src/b03_formulas.py)。新工单随回执归档公式声明和生效参数。公式查询与 OM、规则、模型的可选知识注入独立。新增口径时登记新编号或版本，并补齐相应计算实现、数值用例与回执读取分支，保留旧版声明及历史读验。后续智能体可通过相同的编号或主题查询取得带来源的结果，是否采纳仍由工单权限和所选策略决定。

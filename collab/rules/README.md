@@ -8,9 +8,9 @@
 
 ## 二、通用接口：启动初始化与输入字段
 
-### 1. 启动工厂函数
+### 1. 启动初始化函数
 
-组件模块须暴露可调用工厂函数（默认名 `build_rules`，通过配置 `rules.entrypoint` 指定）：
+组件模块须提供初始化入口函数（默认名 `build_rules`，通过配置 `rules.entrypoint` 指定）：
 
 ```text
 build_rules(*, config) -> provider
@@ -35,10 +35,10 @@ build_rules(*, config) -> provider
 | `snapshot.assignments` | 通用 | 当前已确认设备配置 `{serviceId: {"nodes", "linkIds", "allocatedBps"} \| null}`；已有路径仍占用对应链路容量 |
 | `snapshot` 版本字段 | 通用 | `observedAtSec`、`stateVersion`、`configVersion`、`objectiveVersion` |
 | `authority` | 通用 | 授权边界，含 `policyId`、`policyVersion`、`readableServiceIds`、`executableServiceIds`、`frozenHealthyServiceIds`、`protectedServiceIds`、`allowedMethods` |
-| `budgets` | 通用 | 输出硬约束 `maxHops`、`maxChangedServices`（及可选壁钟上限 `maxSolverWallMs`），以及参考搜索工作量参数 `path_limit`、`path_expansion_budget`、`search_budget`、`search_service_limit` |
+| `budgets` | 通用 | 输出硬约束 `maxHops`、`maxChangedServices`（及可选实际运行耗时上限 `maxSolverWallMs`），以及参考搜索工作量参数 `path_limit`、`path_expansion_budget`、`search_budget`、`search_service_limit` |
 | `candidates` | 仅 `enumerate_actions` | 本单已授权候选工具列表，每项含 `id`、`tool`、`scope`（`kind`、`serviceIds`）、`stage`、`pool`、`budget` |
 | `action` | 仅 `solve_action` | 本次选中的工具描述对象（结构同 `candidates` 单项） |
-| `conditionalReservations` | 仅 `solve_action`（可选） | 新需求修订到达后，旧代际仍占用的路径与线路速率字典；须显式释放或替换后方可复用其链路容量 |
+| `conditionalReservations` | 仅 `solve_action`（可选） | 新需求修订到达后，旧配置版本（`epoch`）仍占用的路径与线路速率字典；须显式释放或替换后方可复用其链路容量 |
 | `knowledgeContext` | 仅 `solve_action`（可选） | 当所选工具由本插件处理、配置声明 `rules.options.acceptKnowledge: true` 且 `knowledge.bindings.rules` 已绑定查询时，按检索顺序传入本版知识条目列表 |
 
 **路径 QoS 与容量聚合规则**：端到端时延线性相加；抖动取平方和开方；误码率线性相加并以 `1` 封顶；端到端丢包率为 `1 - prod(1 - packetLossRate)`。容量方面，正式提案校验允许保持或减轻链路已有超载（例如链路降容导致受保护业务已占带宽高于新容量时保持原配置），但禁止新增或加重超载；离线样例检查器 `check.py` 对总占用采用更严格的不超过 `params.bandwidthBps` 校验。
@@ -68,9 +68,9 @@ build_rules(*, config) -> provider
   ```
 - **差量语义与校验约束**：
   1. **省略即保持，`null` 为释放**：未出现在 `patch` 中的业务维持当前设备配置；值为 `null` 表示申请释放（业务到期由现有生命周期工单释放）。
-  2. **写权限边界**：`patch` 的键必须属于 `action.scope.serviceIds` 与 `authority.executableServiceIds` 的交集，且排除 `frozenHealthyServiceIds` 与 `protectedServiceIds`，不得增删业务名册。
+  2. **写权限边界**：`patch` 的键必须属于 `action.scope.serviceIds` 与 `authority.executableServiceIds` 的交集，且排除 `frozenHealthyServiceIds` 与 `protectedServiceIds`，不得增删业务列表。
   3. **路径与速率约束**：每条非空路径须为无环连通路径（首尾分别等于业务源/宿节点、`len(nodes) == len(linkIds) + 1`、沿途节点与链路均在线、跳数 `<= budgets.maxHops`），且 `allocatedBps` 须严格等于原需求 `requirement.bandwidthBps`。
-  4. **变更预算与耗时**：实际变更业务数量不得超过 `budgets.maxChangedServices`；若为工具配置了 `maxSolverWallMs`，主控在返回时检查实测壁钟耗时，并统一将求解耗时计入业务时钟。
+  4. **变更预算与耗时**：实际变更业务数量不得超过 `budgets.maxChangedServices`；若为工具配置了 `maxSolverWallMs`，主控在返回时检查实际运行耗时，并统一将求解耗时计入业务时钟。
   5. **审计与复核**：`audit.usedKnowledge` 若提供，须为去重列表且仅引用本次传入的 `knowledgeContext` 中的条目 ID；其余审计计数字段可按算法实际工作量自报。主控补齐未变业务后统一复核五项 QoS、共享容量与设备下发顺序。
 
 ---

@@ -1,6 +1,6 @@
 # 工单证据与源码核验
 
-新工单以 `b03.packet.workorder.v3` 写入 `CONDITIONS.receiptContract`，并以 `b03.packet.run-files.v3` 封存成员索引。`formula-edition.json` 保留本次执行的完整公式版本，运行条件绑定其摘要、实现摘要及实际生效参数。归档核验按记录的版本解释 v1、v2 和 v3 回执。要严格复现旧版本，请在原提交、原引擎和已启用资产下运行 `run.py verify RUN --strict-source`。
+新工单以 `b03.packet.workorder.v3` 写入 `CONDITIONS.receiptContract`，并以 `b03.packet.run-files.v3` 归档成员索引。`formula-edition.json` 保留本次执行的完整公式版本，运行条件绑定其摘要、实现摘要及实际生效参数。归档核验按记录的版本解释 v1、v2 和 v3 回执。要严格复现旧版本，请在原提交、原引擎和已启用资产下运行 `run.py verify RUN --strict-source`。
 
 `python run.py verify RUN` 按分组时钟核验已保存的工单，检查档案成员摘要、官方场景及引擎身份、业务权限、QoS、路径生效、逐跳设备读回、分组守恒和 U/W 积分。可在同规模的后续版本执行归档核验，无需安装当时的模型适配器、权重或求解器软件包。需要外部可信参照时，将原 `RUN_FILES.json` 的摘要与版本记录一同保存。
 

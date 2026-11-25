@@ -8,9 +8,9 @@
 
 ## 二、通用接口：启动初始化与知识版格式
 
-### 1. 启动工厂函数
+### 1. 启动初始化函数
 
-组件模块须暴露可调用工厂函数（默认名 `build_knowledge`，通过配置 `knowledge.entrypoint` 指定）：
+组件模块须提供初始化入口函数（默认名 `build_knowledge`，通过配置 `knowledge.entrypoint` 指定）：
 
 ```text
 build_knowledge(*, config, library) -> provider
@@ -36,7 +36,7 @@ build_knowledge(*, config, library) -> provider
 
 ---
 
-## 三、两条查询分支与三类消费入口
+## 三、两条查询分支与三个接入环节
 
 ### 1. `lookup(*, identifier=None, topic=None) -> list[str]` 两条查询分支
 
@@ -49,17 +49,17 @@ build_knowledge(*, config, library) -> provider
 
 规范计算口径、单位和适用条件可通过 `python run.py knowledge --formulas --topic 容量` 查询。版本登记及调用方式见[知识说明](../../docs/KNOWLEDGE.md)。
 
-### 2. 三类消费入口挂载规则（`knowledge.bindings`）
+### 2. 三个接入环节挂载规则（`knowledge.bindings`）
 
 通过配置中的 `knowledge.bindings` 分别声明 `om`、`rules`、`model` 入口，每项填写 `{"topic": "<查询词>"}` 或 `{"identifier": "<条目ID>"}`。关闭单个入口须直接省略该键（填入 `{}` 或 `null` 均会报错）；关闭全部入口可配置 `"bindings": {}`，未启用入口沿用既有流程：
 
-| 消费入口 | 触发时机 | 注入位置 | 消费侧前置开关与边界 |
+| 接入环节 | 触发时机 | 注入位置 | 接入方前置开关与边界 |
 |---|---|---|---|
 | `om` | OM 完成权限诊断后、将工单交给 RC 前 | `diagnosis.knowledgeContext` | 配置 `knowledge.bindings.om` 即注入；授权范围与原始 QoS 仍按已送达观测独立计算 |
 | `rules` | 规则求解调用 `solve_action` 前 | `request["knowledgeContext"]` | 所选工具由 v2 规则插件处理且声明 `rules.options.acceptKnowledge: true` |
 | `model` | RC 构造模型因果观测时 | `observation["knowledgeContext"]` | 模型插件须显式声明 `model.options.acceptKnowledge: true`；内置冻结模型保持原始输入不变 |
 
-各入口的查询请求、排序结果、知识版来源、绑定快照与耗时记录在工单 `knowledge_contexts` 中；首单残余准入核查（`K044`）继续保留独立记录 `knowledge_io`。离线 `run.py verify` 会按归档知识版逐项复核条目内容、授权快照与消费位置。
+各入口的查询请求、排序结果、知识版来源、绑定快照与耗时记录在工单 `knowledge_contexts` 中；首单残余准入核查（`K044`）继续保留独立记录 `knowledge_io`。离线 `run.py verify` 会按归档知识版逐项复核条目内容、授权快照与注入位置。
 
 ---
 

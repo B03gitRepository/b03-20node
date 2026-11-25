@@ -16,7 +16,7 @@ python run.py examples runs/residual-example --components config/example-rules.j
 
 ## 提供方接口
 
-在继承 `config/components.json` 的清单中设置 `rules.id`、`rules.version` 和 `rules.entrypoint`。示例使用 `example_rules:build_rules`。运行器导入受信任的本地 Python 模块，为每个决策器调用一次 `build_rules(*, config)`。工厂接收解析后的规则描述及 `options`，返回的对象提供以下两个方法。
+在继承 `config/components.json` 的清单中设置 `rules.id`、`rules.version` 和 `rules.entrypoint`。示例使用 `example_rules:build_rules`。运行器导入受信任的本地 Python 模块，为每个决策器调用一次 `build_rules(*, config)`。该初始化函数接收解析后的规则描述及 `options`，返回的对象提供以下两个方法。
 
 | 方法 | 输入与返回值 |
 | --- | --- |
