@@ -41,7 +41,7 @@ build_rules(*, config) -> provider
 | `conditionalReservations` | 仅 `solve_action`（可选） | 新需求修订到达后，旧代际仍占用的路径与线路速率字典；须显式释放或替换后方可复用其链路容量 |
 | `knowledgeContext` | 仅 `solve_action`（可选） | 当所选工具由本插件处理、配置声明 `rules.options.acceptKnowledge: true` 且 `knowledge.bindings.rules` 已绑定查询时，按检索顺序传入本版知识条目列表 |
 
-**路径 QoS 与容量聚合规则**：端到端时延线性相加；抖动取平方和开方；误码率线性相加并以 `1` 封顶；端到端丢包率为 `1 - prod(1 - packetLossRate)`；各链路占用总线路速率不得超过 `params.bandwidthBps`。
+**路径 QoS 与容量聚合规则**：端到端时延线性相加；抖动取平方和开方；误码率线性相加并以 `1` 封顶；端到端丢包率为 `1 - prod(1 - packetLossRate)`。容量方面，正式提案校验允许保持或减轻链路已有超载（例如链路降容导致受保护业务已占带宽高于新容量时保持原配置），但禁止新增或加重超载；离线样例检查器 `check.py` 对总占用采用更严格的不超过 `params.bandwidthBps` 校验。
 
 ---
 
@@ -86,7 +86,7 @@ build_rules(*, config) -> provider
   "extends": "components.json",
   "catalog": {
     "version": "collab.ranked-route.v2",
-    "symbols": ["A", "B", "C", "X"]
+    "symbols": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "X"]
   },
   "model": { "catalogVersion": "collab.ranked-route.v2" },
   "rules": {
@@ -111,7 +111,7 @@ build_rules(*, config) -> provider
 }
 ```
 
-- **新增工具 ID**：须在 `catalog.symbols` 与 `rules.options.customTools` 登记新 ID（声明 `tool`、`scope` 取 `"writable_active"` 或 `"retain"`、`permit` 取原生已授权方法、`pool`、`budget`），并使用独立 `catalog.version`（不可复用 `b03.tools.v1`）。若需模型调用新 ID，须同步更新并验证模型映射。
+- **新增工具 ID**：`extends` 会整体替换数组，因此须在 `catalog.symbols` 中完整保留原有工具目录（`A–L`）并追加新 ID（整段配置与 [config/collab-rules.json](../../config/collab-rules.json) 一致），同时在 `rules.options.customTools` 登记新 ID（声明 `tool`、`scope` 取 `"writable_active"` 或 `"retain"`、`permit` 取原生已授权方法、`pool`、`budget`）并使用独立 `catalog.version`（不可复用 `b03.tools.v1`）。若需模型调用新 ID，须同步更新并验证模型映射。
 - **替换既有 ID 算法**：除声明独立 `catalogVersion` 外，须在 `rules.options.providedNative` 中列出由本插件接管的既有工具 ID。
 - **可选命名输出预算**：可在 `rules.options.outputBudgets` 声明命名限制（如 `{"bounded": {"maxSolverWallMs": 800, "maxHops": 6, "maxChangedServices": 3}}`），并让工具注册的 `budget` 指向该名称。
 - 独立依赖与资产登记见 [docs/ASSETS.md](../../docs/ASSETS.md)、[docs/PROVENANCE.md](../../docs/PROVENANCE.md) 及完整规则契约 [docs/RULES.md](../../docs/RULES.md)。

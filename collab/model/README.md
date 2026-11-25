@@ -43,7 +43,7 @@ build_model(*, checkpoint, tokenizer, device, config) -> actor
 | `configs` | 压缩表，列为 `service`、`links`、`payloadBps`、`wireBps`、`epoch`、`verified`，表示已确认生效路径及预留带宽（**bit/s**） |
 | `knowledgeContext` | 可选字段。仅当组件配置显式声明 `model.options.acceptKnowledge: true` 且 `knowledge.bindings.model` 已绑定查询时附加；默认不注入 |
 
-**压缩表解码规则**：`nodes`、`links`、`services`、`configs` 均包含 `columns`、`defaults`、`rows`。每行格式为 `[entity_id, mask, *replacements]`：除首列实体 ID 外，其余列先取 `defaults` 默认值，再按整数 `mask` 的二进制位从低到高，将置 `1` 对应列依次替换为 `replacements` 中的覆盖值。可直接复用 [check.py](check.py) 中的 `decode(table)`。
+**压缩表解码规则**：`nodes`、`links`、`services`、`configs` 均包含 `columns`、`defaults`、`rows`。每行格式为 `[entity_id, mask, *replacements]`：除首列实体 ID 外，其余列先取 `defaults` 默认值，再按整数 `mask` 的二进制位从低到高，将置 `1` 对应列依次替换为 `replacements` 中的覆盖值。表内实体索引按当前帧快照重新排序编号，跨工单或新增业务时同一实体的整数下标可能变化，策略不得依赖跨快照固定下标。可直接复用 [check.py](check.py) 中的 `decode(table)`。
 
 ---
 
@@ -153,3 +153,5 @@ python episode.py evaluate runs/sample > evaluation.json
 python run.py run --policy model --components config/collab-selector.json --output runs/model-dev
 python run.py verify runs/model-dev --strict-source --components config/collab-selector.json
 ```
+
+注：示例配置 `config/collab-selector.json` 对应冻结策略（[standalone_selector.py](../../src/standalone_selector.py)），仅返回工具与版本号，其采样轨迹不含 PPO 所需的行为概率字段；需要带概率分布的在线采样轨迹时，请切换为 `mode: "online-ppo"` 的配置（如 `config/packet-ppo.json` 或自研在线采样组件）。

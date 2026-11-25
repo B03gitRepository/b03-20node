@@ -44,12 +44,12 @@ build_knowledge(*, config, library) -> provider
 
 | 查询分支 | 输入参数 | 组件返回值要求 | 宿主组装与交付内容 |
 |---|---|---|---|
-| **分支 A：按编号精确查找** | `identifier="<ID>"`, `topic=None` | 本版存在该编号时返回 `[identifier]`，否则返回 `[]` | 返回对应单条条目，自动附带 `version` 及知识版 SHA-256 摘要 |
-| **分支 B：按主题召回与排序** | `identifier=None`, `topic="<查询词>"` | 自主召回并排序后的本版唯一 ID 列表（允许 `[]`；可接入关键词、向量检索或外部服务） | 严格按返回 ID 顺序组装同版完整条目（含 `id`、`topics`、`content`、`sources`、`applicability`、`version`）并绑定来源摘要 |
+| **分支 A：按编号精确查找** | `identifier="<ID>"`, `topic=None` | 本版存在该编号时返回 `[identifier]`，否则返回 `[]` | 返回对应单条 6 字段条目（含 `id`、`topics`、`content`、`sources`、`applicability`、`version`）；知识版摘要记录于工单回执 `knowledge_contexts[port].component.sourceSha256` |
+| **分支 B：按主题召回与排序** | `identifier=None`, `topic="<查询词>"` | 自主召回并排序后的本版唯一 ID 列表（允许 `[]`；可接入关键词、向量检索或外部服务） | 严格按返回 ID 顺序组装同版 6 字段条目（含 `version`）；知识版摘要记录于工单回执 `knowledge_contexts[port].component.sourceSha256` |
 
 ### 2. 三类消费入口挂载规则（`knowledge.bindings`）
 
-通过配置中的 `knowledge.bindings` 分别声明 `om`、`rules`、`model` 入口，每项填写 `{"topic": "<查询词>"}` 或 `{"identifier": "<条目ID>"}`。未配置或留空的入口默认不查询、沿用既有流程：
+通过配置中的 `knowledge.bindings` 分别声明 `om`、`rules`、`model` 入口，每项填写 `{"topic": "<查询词>"}` 或 `{"identifier": "<条目ID>"}`。关闭单个入口须直接省略该键（填入 `{}` 或 `null` 均会报错）；关闭全部入口可配置 `"bindings": {}`，未启用入口沿用既有流程：
 
 | 消费入口 | 触发时机 | 注入位置 | 消费侧前置开关与边界 |
 |---|---|---|---|
